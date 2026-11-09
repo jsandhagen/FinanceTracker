@@ -1,0 +1,6 @@
+__pycache__/
+*.csv
+*backup*.json
+custom_rules.json
+training_data.json
+.DS_Store

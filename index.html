@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FinanceTracker</title>
+  <meta name="description" content="Private spending dashboard for Capital One CSV exports. Runs entirely on your device." />
+  <meta name="theme-color" content="#080c14" />
+  <meta name="robots" content="noindex" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Finance" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/pwa.css" />
+  <script src="vendor/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<!-- ── First run: nothing stored yet ── -->
+<section class="welcome" id="welcome" hidden>
+  <div class="logo">FinanceTracker</div>
+  <h1>Know your <span>money</span></h1>
+  <p class="subtitle">Upload Capital One CSV exports to visualise spending patterns, net cashflow, and recurring transactions.</p>
+
+  <div class="card upload-card">
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".csv,text/csv" multiple />
+      <span class="drop-icon">📂</span>
+      <div class="drop-label">Drop CSV files here</div>
+      <div class="drop-hint">or tap to browse, multiple files supported</div>
+    </div>
+    <div class="supported">
+      <span class="badge">✓ 360 Checking</span>
+      <span class="badge">✓ 360 Savings</span>
+      <span class="badge">✓ Capital One Credit Card</span>
+    </div>
+    <div class="welcome-alt">
+      Already use this on another device?
+      <button class="link-btn" id="welcome-sync">Set up sync</button>
+      or <label class="link-btn" style="position:relative;overflow:hidden">restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" style="position:absolute;inset:0;opacity:0" /></label>
+    </div>
+  </div>
+  <p class="privacy-note">Your files never leave this device. They are read in the browser and saved locally, so next time the dashboard opens straight away.</p>
+</section>
+
+<!-- ── Dashboard ── -->
+<div class="wrapper" id="dashboard" hidden>
+
+  <header>
+    <div class="brand">FinanceTracker</div>
+    <div class="header-right">
+      <div class="acct-badges" id="acct-badges"></div>
+      <label class="hdr-btn primary" title="Add more CSV exports; duplicates are skipped">
+        + Add CSVs
+        <input type="file" id="add-input" accept=".csv,text/csv" multiple />
+      </label>
+      <button class="hdr-btn" id="open-settings"><span class="sync-dot" id="sync-dot"></span>Settings</button>
+    </div>
+  </header>
+
+  <div class="filter-bar">
+    <span class="filter-label">Period</span>
+    <button class="preset-btn" data-days="30">30d</button>
+    <button class="preset-btn" data-days="90">3m</button>
+    <button class="preset-btn" data-days="180">6m</button>
+    <button class="preset-btn" data-days="365">1y</button>
+    <button class="preset-btn active" data-days="0">All</button>
+    <span class="date-sep">|</span>
+    <input type="date" id="date-start" />
+    <span class="date-sep">→</span>
+    <input type="date" id="date-end" />
+    <span class="filter-range-disp" id="range-disp"></span>
+  </div>
+
+  <div class="summary-grid">
+    <div class="card summary-card income d1">
+      <div class="sum-label">Total Money In</div>
+      <div class="sum-val" id="v-income">—</div>
+      <div class="sum-sub">Payroll &amp; deposits</div>
+    </div>
+    <div class="card summary-card expense d2">
+      <div class="sum-label">Total Spent</div>
+      <div class="sum-val" id="v-expense">—</div>
+      <div class="sum-sub">Real spending only</div>
+    </div>
+    <div class="card summary-card net pos d3" id="net-card">
+      <div class="sum-label">Net Cashflow</div>
+      <div class="sum-val" id="v-net">—</div>
+      <div class="sum-sub">Income minus spending</div>
+    </div>
+    <div class="card summary-card xfr d4">
+      <div class="sum-label">Transfers Excluded</div>
+      <div class="sum-val" id="v-xfr">—</div>
+      <div class="sum-sub">CC payments · savings · P2P</div>
+    </div>
+    <div class="card summary-card count d5">
+      <div class="sum-label">Transactions</div>
+      <div class="sum-val" id="v-count">—</div>
+      <div class="sum-sub" id="txn-sub">Across all accounts</div>
+    </div>
+  </div>
+
+  <div class="xfr-note">
+    ⚡ <span><strong>Transfer-aware:</strong>
+    Credit card payments, savings transfers, and P2P payments are excluded from income &amp; spending totals to avoid double-counting.
+    They appear in the table below (highlighted) when "Show transfers" is checked.</span>
+  </div>
+
+  <div class="charts-row">
+    <div class="card chart-card d1">
+      <h2>Spending by Category</h2>
+      <canvas id="donut-chart"></canvas>
+      <div id="cat-legend"></div>
+    </div>
+    <div class="card chart-card d2">
+      <h2>Monthly Cashflow</h2>
+      <canvas id="monthly-chart"></canvas>
+    </div>
+  </div>
+
+  <div class="card chart-card balance-card d1" id="balance-card" hidden>
+    <h2>Total Assets &amp; Liabilities <span style="font-size:0.72rem;color:var(--dim);font-weight:400;margin-left:0.5rem;">Checking + Savings · CC balance estimated from first transaction</span></h2>
+    <canvas id="balance-chart"></canvas>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="card d1">
+      <div class="section-title">Recurring Transaction Streams</div>
+      <div id="streams-list"></div>
+      <div id="streams-pagination" class="streams-pagination"></div>
+    </div>
+    <div class="card d2">
+      <div class="section-title">Top Spending Merchants</div>
+      <div id="merchant-list"></div>
+    </div>
+  </div>
+
+  <div class="card cp-card d1" id="cashflow-predictor">
+    <div class="cp-header">
+      <div class="section-title" style="margin-bottom:0">Cashflow Predictor</div>
+      <div class="cp-income-row">
+        <span class="cp-income-label">Monthly income</span>
+        <div class="cp-income-input-wrap">
+          <span>$</span>
+          <input id="cp-income" type="number" inputmode="decimal" step="1" min="0" placeholder="auto" />
+        </div>
+        <button id="cp-income-reset" title="Reset to actual average">↺</button>
+      </div>
+    </div>
+    <div id="cp-period-note" class="cp-period-note"></div>
+    <div class="cp-content">
+      <div class="cp-list-col">
+        <div id="cp-list"></div>
+        <hr class="cp-divider" />
+        <div id="cp-summary"></div>
+      </div>
+      <div class="cp-chart-col">
+        <div class="cp-chart-wrap"><canvas id="cp-chart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card txn-section d1">
+    <div class="section-title">Transactions</div>
+    <div class="txn-search-bar">
+      <input id="txn-search" class="txn-search-input" type="search"
+             placeholder="Search description… (regex supported)" spellcheck="false" autocomplete="off" />
+      <div class="txn-amt-group">
+        <div class="txn-dir-pills">
+          <button class="txn-dir-pill active" data-dir="">All</button>
+          <button class="txn-dir-pill" data-dir="income">+</button>
+          <button class="txn-dir-pill" data-dir="expense">−</button>
+        </div>
+        <select id="txn-amt-op">
+          <option value="">any $</option>
+          <option value="lt">&lt;</option>
+          <option value="lte">≤</option>
+          <option value="eq">=</option>
+          <option value="gte">≥</option>
+          <option value="gt">&gt;</option>
+        </select>
+        <input id="txn-amt-val" type="number" inputmode="decimal" placeholder="0.00" min="0" step="0.01" />
+      </div>
+    </div>
+    <div class="txn-top">
+      <div class="cat-filters" id="cat-filters"></div>
+      <label class="show-transfers-wrap"><input type="checkbox" id="show-xfr" /> Show transfers</label>
+    </div>
+    <div class="txn-table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Description</th><th>Category</th><th>Account</th><th style="text-align:right">Amount</th></tr>
+        </thead>
+        <tbody id="txn-tbody"></tbody>
+      </table>
+    </div>
+    <div id="txn-more" class="streams-pagination" hidden></div>
+  </div>
+</div>
+
+<!-- ── Stream timeline modal ── -->
+<div id="stream-overlay">
+  <div id="stream-modal">
+    <div id="stream-modal-header">
+      <div>
+        <div id="stream-modal-title"></div>
+        <div id="stream-modal-meta"></div>
+      </div>
+      <button id="stream-modal-close" aria-label="Close">✕</button>
+    </div>
+    <div id="stream-chart-wrap"><canvas id="stream-chart"></canvas></div>
+    <div id="stream-timeline"></div>
+    <div id="stream-modal-footer">
+      <span id="stream-total-label">Total</span>
+      <span id="stream-total-val"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category picker ── -->
+<div id="cat-picker">
+  <div id="cat-picker-title">Recategorize merchant</div>
+  <input id="cat-picker-search" type="text" placeholder="Filter categories…" autocomplete="off" spellcheck="false" />
+  <div id="cat-picker-opts"></div>
+  <div id="cat-picker-matchby">
+    <div id="cat-picker-matchby-title">Apply to…</div>
+    <button id="cat-pick-by-merchant" class="matchby-btn"></button>
+    <button id="cat-pick-by-amount" class="matchby-btn highlight"></button>
+    <button id="cat-pick-matchby-back">← back</button>
+  </div>
+  <div id="cat-pick-tolerance-panel">
+    <div class="cat-picker-section-title" style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);padding:0.25rem 0.5rem 0.4rem;border-bottom:1px solid var(--border)">Set tolerance</div>
+    <div class="tol-row">
+      <span>±</span>
+      <input id="cat-pick-tol-pct" type="number" inputmode="decimal" min="0" max="50" step="1" value="0" />
+      <span>%</span>
+    </div>
+    <div id="cat-pick-tol-range"></div>
+    <button id="cat-pick-tol-confirm" class="matchby-btn highlight">Save rule</button>
+    <button id="cat-pick-matchby-back2">← back</button>
+  </div>
+</div>
+
+<!-- ── Settings ── -->
+<div id="settings-overlay">
+  <div id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <div class="set-head">
+      <h2 id="set-title">Settings</h2>
+      <button class="set-close" id="close-settings" aria-label="Close">✕</button>
+    </div>
+
+    <div class="set-sec">
+      <h3>Sync between devices</h3>
+      <p>Optional. Keeps your phone and computer in step through a secret GitHub Gist.
+        Everything is encrypted on this device with your passphrase before it is uploaded, so GitHub only ever stores unreadable data.
+        You need a GitHub <a href="https://github.com/settings/tokens/new?scopes=gist&description=FinanceTracker%20sync" target="_blank" rel="noopener">personal access token with the <b>gist</b> scope</a>.
+        Use the same token and passphrase on every device.</p>
+      <div id="sync-setup">
+        <div class="set-row"><input class="set-input" id="sync-token" type="password" placeholder="GitHub token (ghp_… or github_pat_…)" autocomplete="off" /></div>
+        <div class="set-row"><input class="set-input" id="sync-pass" type="password" placeholder="Encryption passphrase" autocomplete="new-password" /></div>
+        <div class="set-row"><button class="set-btn primary" id="sync-connect">Connect</button><span class="set-status" id="sync-setup-status"></span></div>
+      </div>
+      <div id="sync-on" hidden>
+        <div class="set-row"><span class="set-status" id="sync-status"></span></div>
+        <div class="set-row">
+          <button class="set-btn" id="sync-now">Sync now</button>
+          <button class="set-btn" id="sync-off">Disconnect this device</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <h3>Credit card starting balance</h3>
+      <p>The balance on the card at the start of your oldest credit card export. Fixes the "CC outstanding" line on the assets chart.</p>
+      <div class="set-row">
+        <input class="set-input" id="cc-start" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 1987.39" />
+        <button class="set-btn" id="cc-save">Save</button>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <h3>Category rules <span id="rule-count" style="color:var(--dim)"></span></h3>
+      <p>Created when you recategorize a transaction. Tap ✕ to remove one.</p>
+      <div class="rule-list" id="rule-list"></div>
+      <div class="set-row" style="margin-top:.6rem">
+        <label class="set-btn">Import custom_rules.json / training_data.json
+          <input type="file" id="import-rules" accept=".json,application/json" multiple />
+        </label>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <h3>Backup</h3>
+      <p>A plain (unencrypted) file with every transaction and rule, for safekeeping or moving to a new device without sync.</p>
+      <div class="set-row">
+        <button class="set-btn" id="export-backup">Download backup</button>
+        <label class="set-btn">Restore backup<input type="file" id="import-backup" accept=".json,application/json" /></label>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <h3>Data on this device</h3>
+      <p id="data-summary"></p>
+      <div class="set-row"><button class="set-btn danger" id="clear-all">Delete all data</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
