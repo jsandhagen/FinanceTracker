@@ -1,13 +1,13 @@
 <p align="center">
-  <a href="https://jsandhagen.github.io/financetracker/#install"><img src="icons/icon-192.png" width="96" height="96" alt="FinanceTracker" /></a>
+  <a href="https://jsandhagen.github.io/FinanceTracker/#install"><img src="icons/icon-192.png" width="96" height="96" alt="FinanceTracker" /></a>
 </p>
 
 <h1 align="center">FinanceTracker</h1>
 
 <p align="center">
-  <a href="https://jsandhagen.github.io/financetracker/#install"><img src="https://img.shields.io/badge/Install%20the%20app-8b5cf6?style=for-the-badge" alt="Install the app" height="40" /></a>
+  <a href="https://jsandhagen.github.io/FinanceTracker/#install"><img src="https://img.shields.io/badge/Install%20the%20app-8b5cf6?style=for-the-badge" alt="Install the app" height="40" /></a>
   &nbsp;
-  <a href="https://jsandhagen.github.io/financetracker/"><img src="https://img.shields.io/badge/Open%20in%20browser-1e293b?style=for-the-badge" alt="Open in browser" height="40" /></a>
+  <a href="https://jsandhagen.github.io/FinanceTracker/"><img src="https://img.shields.io/badge/Open%20in%20browser-1e293b?style=for-the-badge" alt="Open in browser" height="40" /></a>
 </p>
 
 <p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.</sub></p>
@@ -33,11 +33,11 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
    private repos; otherwise public is fine, since the repo holds code, never data).
 2. Push this folder:
    ```bash
-   git remote add origin https://github.com/<you>/financetracker.git
+   git remote add origin https://github.com/<you>/FinanceTracker.git
    git push -u origin main
    ```
 3. On GitHub: **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `(root)`**.
-4. After a minute it is live at `https://<you>.github.io/financetracker/`.
+4. After a minute it is live at `https://<you>.github.io/FinanceTracker/`.
 
 ## Install it
 
