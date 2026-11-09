@@ -36,8 +36,10 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
    git remote add origin https://github.com/<you>/FinanceTracker.git
    git push -u origin main
    ```
-3. On GitHub: **Settings → Pages → Build and deployment → Deploy from a branch → `main` / `(root)`**.
-4. After a minute it is live at `https://<you>.github.io/FinanceTracker/`.
+3. On GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+   (Not "Deploy from a branch": the workflow in `.github/workflows/deploy.yml` stamps each
+   deploy with a version, which is what makes installed copies update themselves.)
+4. After a minute (watch the **Actions** tab) it is live at `https://<you>.github.io/FinanceTracker/`.
 
 ## Install it
 
@@ -90,7 +92,18 @@ The one deliberate difference from the Python version is the auto-categorizer: s
 logistic regression became a nearest-neighbour match over the same TF-IDF character n-grams
 (`js/categorizer.js`), which needs no training step in the browser.
 
-When you change any file the app loads, bump `CACHE` in `sw.js` so installed copies pick up the
-new list of files.
+### Shipping a change
+
+Commit and push to `main`. That is all: the **Deploy** workflow runs the tests, stamps the
+commit into `sw.js` and `js/version.js`, and publishes. Every installed copy then updates
+itself. It checks when opened, when brought back to the foreground and every 30 minutes,
+and reloads onto the new version straight away, unless you are mid-task (a sheet open,
+typing, a sync running), in which case it shows **Update ready · Reload** and updates the
+next time the app is put away. Data lives in browser storage, not in the app's files, so
+updates never touch it. **Settings → App version** shows which commit is running and has a
+**Check for updates** button.
+
+If the tests fail the deploy stops and the live app stays as it was. A new file the app loads
+must be added to `SHELL` in `sw.js` so it is available offline.
 
 `vendor/chart.umd.min.js` is Chart.js 4.4.3 (MIT), vendored so the app works offline.

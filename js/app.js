@@ -1,6 +1,7 @@
 import * as store from './storage.js';
 import * as A from './analyzer.js';
 import * as sync from './sync.js';
+import { BUILD } from './version.js';
 
 const { ALL_CATS, TRANSFER_CATEGORIES: TRANSFER_CATS } = A;
 
@@ -791,6 +792,9 @@ function renderSettings() {
   $('data-summary').textContent = state.transactions.length
     ? `${state.transactions.length.toLocaleString()} transactions across ${accts} account${accts === 1 ? '' : 's'}, stored in this browser.`
     : 'Nothing stored yet.';
+  $('app-version').textContent = BUILD.startsWith('__')
+    ? 'Development copy (not deployed)'
+    : `Version ${BUILD.split('-')[0]}, deployed ${BUILD.split('-')[1].replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/, '$1-$2-$3 $4:$5 UTC')}`;
   renderSyncStatus();
 }
 
@@ -1101,6 +1105,83 @@ $('close-install').addEventListener('click', closeInstall);
 $('install-overlay').addEventListener('click', ev => { if (ev.target === $('install-overlay')) closeInstall(); });
 window.addEventListener('hashchange', () => { if (location.hash === '#install') openInstall(); });
 
+// ── Auto-update ──────────────────────────────────────────────────────────────
+// Each deploy changes sw.js (the workflow stamps the commit into it). The browser
+// installs the new worker, which takes over at once; 'controllerchange' then
+// tells this page, and it reloads onto the new files at a moment that cannot
+// interrupt anything. Stored data is in IndexedDB and is untouched by a reload.
+const UPDATE_CHECK_MS = 30 * 60 * 1000;
+let swReg = null;
+let updatePending = false;
+
+function busy() {
+  const a = document.activeElement;
+  return syncing
+    || picker.classList.contains('open')
+    || settingsOverlay.classList.contains('open')
+    || $('install-overlay').classList.contains('open')
+    || streamOverlay.classList.contains('open')
+    || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'file');
+}
+
+function applyUpdate() {
+  try { sessionStorage.setItem('ft-updated', '1'); } catch {}
+  location.reload();
+}
+
+function onUpdateReady() {
+  if (updatePending) return;
+  updatePending = true;
+  if (document.hidden || !busy()) { applyUpdate(); return; }
+  // In the middle of something: offer it, and take it the next time the app is
+  // put away.
+  const el = $('toast');
+  el.innerHTML = 'Update ready. <button class="link-btn" id="update-now">Reload</button>';
+  el.classList.remove('err');
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  $('update-now').addEventListener('click', applyUpdate);
+}
+
+function checkForUpdate() {
+  if (swReg && navigator.onLine !== false) swReg.update().catch(() => {});
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && updatePending) applyUpdate();
+  if (document.visibilityState === 'visible') checkForUpdate();
+});
+
+$('check-update').addEventListener('click', async () => {
+  if (!swReg) { toast('Updates only apply to the deployed site.'); return; }
+  try { await swReg.update(); }
+  catch { toast("Couldn't reach the server. Check your connection.", true); return; }
+  if (swReg.installing || swReg.waiting) {
+    closeSettings(); // so the reload is not held back for an open sheet
+    toast('Downloading the update…');
+  } else {
+    toast("You're on the latest version.");
+  }
+});
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  // Only a worker *replacing* one counts as an update; the very first install
+  // also fires controllerchange and must not reload the page. Tracked per change,
+  // not once at load, or a first visit would never pick up a later deploy.
+  let controller = navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    const replaced = !!controller;
+    controller = navigator.serviceWorker.controller;
+    if (replaced) onUpdateReady();
+  });
+  try {
+    swReg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+    checkForUpdate();
+    setInterval(checkForUpdate, UPDATE_CHECK_MS);
+  } catch {}
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   state = await store.loadAll();
@@ -1108,9 +1189,13 @@ async function boot() {
   updateInstallButtons();
   if (location.hash === '#install') openInstall();
   if (state.sync) { setDot('ok'); lastAutoSync = Date.now(); syncNow({ quiet: true }); }
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  registerServiceWorker();
+  try {
+    if (sessionStorage.getItem('ft-updated')) {
+      sessionStorage.removeItem('ft-updated');
+      toast(`Updated to the latest version${BUILD.startsWith('__') ? '' : ` (${BUILD.split('-')[0]})`}.`);
+    }
+  } catch {}
 }
 
 boot().catch(e => {

@@ -1,0 +1,53 @@
+# Every push to main: run the tests, stamp the build, publish to GitHub Pages.
+# Repo setting needed once: Settings > Pages > Source: "GitHub Actions".
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test
+        run: |
+          node tests/sync.test.mjs
+          node --check js/app.js
+
+      # Changes sw.js on every deploy, which is how installed copies learn there
+      # is something new. Also shown under Settings so you can see what is live.
+      - name: Stamp the build
+        run: |
+          BUILD="${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M)"
+          sed -i "s/__BUILD__/${BUILD}/g" sw.js js/version.js
+          grep -q "$BUILD" sw.js && grep -q "$BUILD" js/version.js
+          echo "Deploying build $BUILD"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
