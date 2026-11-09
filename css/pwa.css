@@ -63,21 +63,24 @@ button { font-family: inherit; }
 /* ── toast ── */
 #toast {
   position: fixed; left: 50%; bottom: calc(1.25rem + env(safe-area-inset-bottom)); z-index: 2000;
-  transform: translate(-50%, 160%); transition: transform .3s cubic-bezier(.33,1,.68,1);
+  transform: translate(-50%, 160%); opacity: 0; visibility: hidden;
+  transition: transform .3s cubic-bezier(.33,1,.68,1), opacity .3s, visibility .3s;
   background: #13192a; border: 1px solid var(--border); border-radius: 12px;
   padding: 0.7rem 1.1rem; font-size: 0.85rem; box-shadow: 0 8px 32px rgba(0,0,0,.5);
   max-width: calc(100vw - 2rem);
 }
-#toast.show { transform: translate(-50%, 0); }
+#toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 #toast.err { border-color: rgba(248,113,113,.4); color: var(--red); }
 
 /* ── settings sheet ── */
-#settings-overlay {
+#settings-overlay, #install-overlay {
   position: fixed; inset: 0; z-index: 950; background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
   display: none; align-items: center; justify-content: center; padding: 1.5rem;
 }
-#settings-overlay.open { display: flex; }
-#settings {
+#settings-overlay.open, #install-overlay.open { display: flex; }
+#install-overlay { z-index: 960; }
+#install-sheet { max-width: 440px; }
+#settings, #install-sheet {
   background: #13192a; border: 1px solid var(--border); border-radius: 18px;
   width: 100%; max-width: 620px; max-height: 88vh; max-height: 88dvh; overflow-y: auto;
   padding: 1.5rem; box-shadow: 0 16px 48px rgba(0,0,0,.6); animation: fadeUp .25s ease both;
@@ -118,6 +121,27 @@ button { font-family: inherit; }
 .rule-item button { background: none; border: none; color: var(--dim); cursor: pointer; font-size: .9rem; padding: .1rem .3rem; }
 .rule-item button:hover { color: var(--red); }
 
+/* ── install sheet ── */
+.install-hero { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.1rem; }
+.install-hero img { border-radius: 14px; flex: none; }
+.install-hero p { font-size: .85rem; color: var(--muted); line-height: 1.45; }
+.install-steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: .55rem; }
+.install-steps li {
+  counter-increment: step; display: flex; align-items: center; gap: .7rem; font-size: .88rem;
+  background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: 10px; padding: .65rem .8rem;
+}
+.install-steps li::before {
+  content: counter(step); flex: none; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: .72rem; font-weight: 700;
+  background: rgba(139,92,246,.18); color: var(--purple);
+}
+.install-steps .glyph {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px;
+  background: rgba(96,165,250,.14); color: var(--blue); vertical-align: middle; margin: 0 .15rem;
+}
+.install-note { font-size: .78rem; color: var(--dim); margin-top: .8rem; line-height: 1.45; }
+.install-go { width: 100%; min-height: 46px; font-size: .95rem; font-weight: 700; }
+
 /* ── phones ── */
 @media (max-width: 640px) {
   .wrapper { padding-left: 1rem; padding-right: 1rem; }
@@ -145,8 +169,8 @@ button { font-family: inherit; }
   }
   #cat-picker-opts { max-height: 45vh; }
   .picker-opt, .matchby-btn { padding: .65rem .75rem; font-size: .9rem; }
-  #settings-overlay, #stream-overlay { padding: 0; align-items: flex-end; }
-  #settings, #stream-modal {
+  #settings-overlay, #install-overlay, #stream-overlay { padding: 0; align-items: flex-end; }
+  #settings, #install-sheet, #stream-modal {
     border-radius: 18px 18px 0 0; max-height: 92dvh;
     padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
   }

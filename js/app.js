@@ -773,6 +773,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
   streamOverlay.classList.remove('open');
   closeSettings();
+  closeInstall();
   closePicker();
 });
 
@@ -1008,10 +1009,104 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// ── Install ──────────────────────────────────────────────────────────────────
+// Chrome, Edge and Android hand over a real install prompt (beforeinstallprompt).
+// iOS has no such API in any browser, so there the sheet shows the Share steps.
+let installPrompt = null;
+const ua = navigator.userAgent;
+const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/.test(ua);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const SHARE_GLYPH = '<span class="glyph" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></span>';
+
+function renderInstall() {
+  const body = $('install-body');
+  if (isStandalone()) {
+    body.innerHTML = '<p class="install-note" style="margin:0;font-size:.88rem;color:var(--muted)">You are already using the installed app. 🎉</p>';
+  } else if (installPrompt) {
+    body.innerHTML = '<button class="set-btn primary install-go" id="install-go">Install app</button>'
+      + '<p class="install-note">Adds FinanceTracker to your ' + (isAndroid ? 'home screen and app drawer' : 'Start menu / Dock and desktop') + '.</p>';
+  } else if (isIOS) {
+    body.innerHTML = `<ol class="install-steps">
+        <li><span>Tap the Share button ${SHARE_GLYPH} in the toolbar</span></li>
+        <li><span>Scroll down and tap <b>Add to Home Screen</b></span></li>
+        <li><span>Tap <b>Add</b> in the top corner</span></li>
+      </ol>
+      <p class="install-note">Installed apps keep their data. Safari can clear storage for websites you have not opened in a while, but not for apps on the Home Screen.</p>`;
+  } else if (isAndroid) {
+    body.innerHTML = `<ol class="install-steps">
+        <li><span>Open the browser menu <b>⋮</b></span></li>
+        <li><span>Tap <b>Install app</b> or <b>Add to Home screen</b></span></li>
+      </ol>`;
+  } else if (/Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) {
+    body.innerHTML = `<ol class="install-steps">
+        <li><span>In the menu bar, choose <b>File → Add to Dock…</b></span></li>
+        <li><span>Click <b>Add</b></span></li>
+      </ol>`;
+  } else if (/Chrome|Chromium|Edg/.test(ua)) {
+    // Chrome/Edge before (or without) its install prompt: point at its own menus.
+    body.innerHTML = `<ol class="install-steps">
+        <li><span>Click the install icon at the right end of the address bar</span></li>
+        <li><span>Or open the menu <b>⋮</b> → <b>Cast, save and share</b> → <b>Install page as app</b></span></li>
+      </ol>
+      <p class="install-note">An <b>Install app</b> button appears here once the browser is ready, usually within a second or two.</p>`;
+  } else {
+    body.innerHTML = `<ol class="install-steps">
+        <li><span>Open this page in <b>Chrome</b> or <b>Edge</b></span></li>
+        <li><span>Click the install icon at the right end of the address bar</span></li>
+      </ol>
+      <p class="install-note">This browser cannot install web apps, but the site still works here and keeps your data.</p>`;
+  }
+}
+
+function openInstall() {
+  renderInstall();
+  $('install-overlay').classList.add('open');
+}
+function closeInstall() {
+  $('install-overlay').classList.remove('open');
+  if (location.hash === '#install') history.replaceState(null, '', location.pathname + location.search);
+}
+function updateInstallButtons() {
+  const show = !isStandalone() && (!!installPrompt || isIOS);
+  $('install-btn').hidden = !show;
+  $('welcome-install-row').hidden = isStandalone();
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); // keep it for our own button rather than the browser's mini-bar
+  installPrompt = e;
+  updateInstallButtons();
+  if ($('install-overlay').classList.contains('open')) renderInstall();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  updateInstallButtons();
+  closeInstall();
+  toast('Installed. You can open FinanceTracker from your apps now.');
+});
+
+$('install-body').addEventListener('click', async ev => {
+  if (!ev.target.closest('#install-go') || !installPrompt) return;
+  const p = installPrompt;
+  installPrompt = null; // a prompt can only be shown once
+  p.prompt();
+  const { outcome } = await p.userChoice;
+  if (outcome !== 'accepted') renderInstall();
+  updateInstallButtons();
+});
+$('install-btn').addEventListener('click', openInstall);
+$('welcome-install').addEventListener('click', openInstall);
+$('close-install').addEventListener('click', closeInstall);
+$('install-overlay').addEventListener('click', ev => { if (ev.target === $('install-overlay')) closeInstall(); });
+window.addEventListener('hashchange', () => { if (location.hash === '#install') openInstall(); });
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   state = await store.loadAll();
   showView();
+  updateInstallButtons();
+  if (location.hash === '#install') openInstall();
   if (state.sync) { setDot('ok'); lastAutoSync = Date.now(); syncNow({ quiet: true }); }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});

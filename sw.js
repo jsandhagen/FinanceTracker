@@ -1,6 +1,6 @@
 // Network first, cache as the fallback: online you always get the latest deploy,
 // offline the app still opens. Data lives in IndexedDB, never in this cache.
-const CACHE = 'financetracker-v1';
+const CACHE = 'financetracker-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/app.css', './css/pwa.css',

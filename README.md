@@ -1,4 +1,18 @@
-# FinanceTracker
+<p align="center">
+  <a href="https://jsandhagen.github.io/financetracker/#install"><img src="icons/icon-192.png" width="96" height="96" alt="FinanceTracker" /></a>
+</p>
+
+<h1 align="center">FinanceTracker</h1>
+
+<p align="center">
+  <a href="https://jsandhagen.github.io/financetracker/#install"><img src="https://img.shields.io/badge/Install%20the%20app-8b5cf6?style=for-the-badge" alt="Install the app" height="40" /></a>
+  &nbsp;
+  <a href="https://jsandhagen.github.io/financetracker/"><img src="https://img.shields.io/badge/Open%20in%20browser-1e293b?style=for-the-badge" alt="Open in browser" height="40" /></a>
+</p>
+
+<p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.</sub></p>
+
+---
 
 A private spending dashboard for Capital One CSV exports (360 Checking, 360 Savings, credit card).
 It runs entirely in the browser, installs as an app on a phone or computer, and works offline.

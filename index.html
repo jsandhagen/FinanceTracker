@@ -48,6 +48,7 @@
       or <label class="link-btn" style="position:relative;overflow:hidden">restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" style="position:absolute;inset:0;opacity:0" /></label>
     </div>
   </div>
+  <p class="welcome-alt" id="welcome-install-row"><button class="link-btn" id="welcome-install">⤓ Install as an app</button> for your home screen or desktop</p>
   <p class="privacy-note">Your files never leave this device. They are read in the browser and saved locally, so next time the dashboard opens straight away.</p>
 </section>
 
@@ -62,6 +63,7 @@
         + Add CSVs
         <input type="file" id="add-input" accept=".csv,text/csv" multiple />
       </label>
+      <button class="hdr-btn" id="install-btn" hidden>⤓ Install</button>
       <button class="hdr-btn" id="open-settings"><span class="sync-dot" id="sync-dot"></span>Settings</button>
     </div>
   </header>
@@ -311,6 +313,21 @@
       <p id="data-summary"></p>
       <div class="set-row"><button class="set-btn danger" id="clear-all">Delete all data</button></div>
     </div>
+  </div>
+</div>
+
+<!-- ── Install (opened by the README's link, which ends in #install) ── -->
+<div id="install-overlay">
+  <div id="install-sheet" role="dialog" aria-modal="true" aria-labelledby="install-title">
+    <div class="set-head">
+      <h2 id="install-title">Install FinanceTracker</h2>
+      <button class="set-close" id="close-install" aria-label="Close">✕</button>
+    </div>
+    <div class="install-hero">
+      <img src="icons/icon-192.png" alt="" width="64" height="64" />
+      <p>Opens like any other app, works offline, and keeps your data on this device.</p>
+    </div>
+    <div id="install-body"></div>
   </div>
 </div>
 
