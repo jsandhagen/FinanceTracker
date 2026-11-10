@@ -139,7 +139,9 @@ export function savings(year, annualSpending) {
 //   dates      paydays in the year (payDates)
 //   txns       categorized, non-transfer transactions
 //   through    last day there is data for (ISO); months after it have no actual
-export function tracker({ year, dates, netPay, bonusNet, bonusMonth, txns, through }) {
+//   isSalary   which deposits count as pay (by default anything filed as Income);
+//              side income and people paying you back are not your salary
+export function tracker({ year, dates, netPay, bonusNet, bonusMonth, txns, through, isSalary = t => t.category === 'Income' }) {
   const months = Array.from({ length: 12 }, (_, i) => ({ ym: `${year}-${p2(i + 1)}`, paychecks: 0, expected: 0, bonus: 0, actual: 0, due: 0 }));
   for (const d of dates) {
     const m = months[Number(d.slice(5, 7)) - 1];
@@ -152,7 +154,7 @@ export function tracker({ year, dates, netPay, bonusNet, bonusMonth, txns, throu
     if (m.ym <= through.slice(0, 7)) m.due += bonusNet;
   }
   for (const t of txns) {
-    if (t.category !== 'Income' || t.date_iso.slice(0, 4) !== String(year)) continue;
+    if (t.date_iso.slice(0, 4) !== String(year) || !earned(t) || !isSalary(t)) continue;
     months[Number(t.date_iso.slice(5, 7)) - 1].actual += earned(t);
   }
   const sum = k => months.reduce((s, m) => s + m[k], 0);
@@ -161,4 +163,75 @@ export function tracker({ year, dates, netPay, bonusNet, bonusMonth, txns, throu
     expected: sum('expected'), expectedToDate: sum('due'), actual: sum('actual'),
     next: dates.find(d => d > through) || null,
   };
+}
+
+// ── Income sources ────────────────────────────────────────────────────────────
+// Every deposit that counts as income comes from a source: the merchant name
+// the bank prints. Each source has a kind, guessed and then yours to change.
+
+export const KINDS = {
+  salary:    'Salary',
+  side:      'Side income',
+  reimburse: 'Reimbursements',
+  interest:  'Interest',
+  other:     'Other income',
+};
+
+const P2P = /venmo|zelle|cash ?app|paypal|apple cash|square cash/i;
+const PAYROLL = /payroll|salary|direct dep|dir dep|federal home loa|biweekly/i;
+const firstWord = m => String(m || '').trim().split(/\s+/)[0].toLowerCase();
+
+// The kind of a source when you have not said. `paycheck` is the merchant of the
+// main paycheck (detectPaycheck): it and other deposits from the same employer
+// (a bonus run, say) are salary, while payroll from anyone else is a second job.
+export function guessKind(merchant, category, paycheck = null) {
+  if (category === 'Interest Income') return 'interest';
+  if (P2P.test(merchant)) return 'reimburse';
+  const employer = paycheck ? firstWord(paycheck) : null;
+  if (employer && firstWord(merchant) === employer) return 'salary';
+  if (PAYROLL.test(merchant)) return employer ? 'side' : 'salary';
+  return 'other';
+}
+
+// What a source is, taking your settings over the guess. `saved` is
+// settings.incomeSources: { merchant: { kind, name } }.
+export function sourceInfo(merchant, category, saved = {}, paycheck = null) {
+  const s = saved[merchant] || {};
+  return {
+    merchant,
+    name: s.name || merchant,
+    kind: KINDS[s.kind] ? s.kind : guessKind(merchant, category, paycheck),
+    set: !!s.kind,
+  };
+}
+
+// Income in `ops` grouped by source, largest first, each with its kind, its
+// total, how many deposits, the last one and its months.
+export function bySource(ops, saved = {}, paycheck = null) {
+  const map = new Map();
+  for (const t of ops) {
+    const v = earned(t);
+    if (!v) continue;
+    let r = map.get(t.merchant);
+    if (!r) map.set(t.merchant, r = { ...sourceInfo(t.merchant, t.category, saved, paycheck), total: 0, count: 0, last: '', months: {} });
+    r.total += v; r.count++;
+    if (t.date_iso > r.last) r.last = t.date_iso;
+    const ym = t.date_iso.slice(0, 7);
+    r.months[ym] = (r.months[ym] || 0) + v;
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total);
+}
+
+// Totals per kind, and month by month per kind, for a list from bySource.
+export function byKind(sources) {
+  const totals = {}, months = new Map();
+  for (const s of sources) {
+    totals[s.kind] = (totals[s.kind] || 0) + s.total;
+    for (const [ym, v] of Object.entries(s.months)) {
+      if (!months.has(ym)) months.set(ym, {});
+      const m = months.get(ym);
+      m[s.kind] = (m[s.kind] || 0) + v;
+    }
+  }
+  return { totals, months: [...months.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([ym, k]) => ({ ym, ...k })) };
 }

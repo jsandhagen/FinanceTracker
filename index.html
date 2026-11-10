@@ -28,6 +28,7 @@
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
     <g id="i-income" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 13.5h12M3.5 11V8M8 11V5M12.5 11V2.5M10.5 4.5l2-2 2 2"/></g>
+    <g id="i-raise" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 12l4-4 3 3 5-6M10.5 5H14v3.5"/></g>
     <g id="i-recurring" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M13 6V3M13 6h-3M13 6a5.5 5.5 0 1 0 .5 3.5"/></g>
     <g id="i-transactions" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M5 4h9M5 8h9M5 12h9M2 4h.5M2 8h.5M2 12h.5"/></g>
     <g id="i-search" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></g>
@@ -82,10 +83,14 @@
     <nav class="nav-list" id="nav-list">
       <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
       <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
-      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>3</kbd></button>
+      <div class="nav-group">Money in</div>
+      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>3</kbd></button>
+      <button class="nav-item nav-sub" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
+      <div class="nav-group">Money out</div>
+      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>4</kbd></button>
       <button class="nav-item nav-sub" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
-      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>4</kbd></button>
       <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
+      <div class="nav-group">Records</div>
       <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
       <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>7</kbd></button>
     </nav>
@@ -139,13 +144,8 @@
 
     <div class="views" id="views">
 
-      <!-- Spending's sub-menu: shown on the Spending and Budgets views -->
-      <div class="subnav" id="spend-tabs" hidden>
-        <div class="seg">
-          <button data-goto="spending">Breakdown</button>
-          <button data-goto="budgets">Budgets</button>
-        </div>
-      </div>
+      <!-- The sub-menu of Income and of Spending, filled by setView -->
+      <div class="subnav" id="subnav" hidden><div class="seg" id="subnav-seg"></div></div>
 
       <!-- Overview -->
       <section class="view" data-view="overview">
@@ -260,8 +260,27 @@
         </div>
       </section>
 
-      <!-- Income: salary, what it comes to after tax, and what a raise would do -->
+      <!-- Income: every source, by kind -->
       <section class="view" data-view="income" hidden>
+        <div class="kpi-row" id="src-kpis"></div>
+        <div class="grid">
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Income by month</span><span class="panel-meta" id="src-chart-meta"></span></div>
+            <div class="panel-body">
+              <div class="legend" id="src-legend"></div>
+              <div class="chart-box h260"><canvas id="src-chart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Sources</span><span class="panel-meta">Type and name are yours to change · saved with your settings</span></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="data src-table" id="src-table"></table></div></div>
+          </div>
+        </div>
+        <p class="inc-foot" id="src-foot"></p>
+      </section>
+
+      <!-- Salary & raises: what pay comes to after tax, and what a raise would do -->
+      <section class="view" data-view="salary" hidden>
         <div class="kpi-row" id="inc-kpis"></div>
         <div class="grid">
           <div class="panel c5">
@@ -422,8 +441,8 @@
   <nav class="tabbar" id="tabbar">
     <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span></button>
     <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Flow</span></button>
-    <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span></button>
     <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
+    <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span></button>
     <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
     <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Ledger</span></button>
     <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
