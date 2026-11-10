@@ -297,6 +297,45 @@ globalThis.fetch = (url, init) => (new URL(url).hostname === 'relay.example'
   : Promise.resolve(new Response(JSON.stringify({ error_code: 'ITEM_LOGIN_REQUIRED', error_message: 'sign in again' }), { status: 400 })));
 await assert.rejects(P.call({ url: 'https://relay.example', key: env.APP_KEY }, 'sync', { item: sealed }), e => e.code === 'ITEM_LOGIN_REQUIRED');
 await assert.rejects(P.call({ url: 'https://relay.example', key: 'wrong' }, 'sync', { item: sealed }), /rejected the access key/);
+
+// ── Direct mode: the app calling Plaid itself ──
+{
+  const direct = { mode: 'direct', clientId: 'cid', secret: 'sec', env: 'sandbox' };
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body), path = new URL(url).pathname;
+    seen.push({ url, body });
+    const ok = d => new Response(JSON.stringify(d), { status: 200 });
+    if (path === '/link/token/create') return ok({ link_token: 'link-direct' });
+    if (path === '/item/public_token/exchange') return ok({ access_token: 'access-direct', item_id: 'item-d' });
+    if (path === '/transactions/sync') return body.cursor
+      ? ok({ added: [res.added[1]], modified: [], removed: [{ transaction_id: 'gone' }], next_cursor: 'd2', has_more: false, accounts })
+      : ok({ added: [res.added[0]], modified: [], removed: [], next_cursor: 'd1', has_more: true });
+    if (path === '/item/remove') return new Response(JSON.stringify({ error_code: 'ITEM_NOT_FOUND', error_message: 'gone' }), { status: 400 });
+    return new Response(JSON.stringify({ error_code: 'INVALID_API_KEYS', error_message: 'invalid client_id or secret provided' }), { status: 400 });
+  };
+  assert.deepEqual(await P.call(direct, 'link-token', { redirect_uri: 'https://me.github.io/FinanceTracker/' }), { link_token: 'link-direct' });
+  assert.equal(seen[0].url, 'https://sandbox.plaid.com/link/token/create');
+  assert.equal(seen[0].body.client_id, 'cid'); assert.equal(seen[0].body.secret, 'sec');
+  assert.equal(seen[0].body.transactions.days_requested, 730);
+  assert.equal((await P.call({ ...direct, env: 'production' }, 'link-token', {})) && seen[1].url, 'https://production.plaid.com/link/token/create');
+  const ex = await P.call(direct, 'exchange', { public_token: 'p' });
+  assert.deepEqual(ex, { item: 'access-direct', item_id: 'item-d' });
+  seen.length = 0;
+  const sy = await P.call(direct, 'sync', { item: ex.item, cursor: null });
+  assert.equal(sy.added.length, 2); assert.deepEqual(sy.removed, ['gone']); assert.equal(sy.cursor, 'd2');
+  assert.equal(seen[0].body.access_token, 'access-direct');
+  assert.equal(P.applySync([], P.emptyState(), { id: 'i' }, sy).length, 2, 'the answer is in the shape the app folds in');
+  // Update mode sends the bank's token rather than a product list.
+  seen.length = 0;
+  await P.call(direct, 'link-token', { item: ex.item });
+  assert.ok(seen[0].body.access_token === 'access-direct' && !seen[0].body.products);
+  assert.deepEqual(await P.call(direct, 'remove', { item: ex.item }), { removed: true }, 'already gone at Plaid counts as removed');
+  await assert.rejects(P.call(direct, 'sync', { item: 'x' }).then(() => { throw new Error('no'); }, e => { throw e; }), () => true);
+  // A browser that refuses the cross-site request gives fetch a bare failure.
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await assert.rejects(P.call(direct, 'link-token', {}), e => e.code === 'BLOCKED' && /relay/.test(e.message));
+}
 globalThis.fetch = realFetch;
 
 console.log('plaid tests passed');

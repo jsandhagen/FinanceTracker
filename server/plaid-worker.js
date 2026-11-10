@@ -1,7 +1,8 @@
 // The relay between FinanceTracker and Plaid, as a Cloudflare Worker.
 //
-// Plaid's API needs your client id and secret, and neither may sit in a web
-// page, so this small program holds them. It stores nothing: when a bank is
+// Only needed when the app cannot call Plaid directly (see server/README.md):
+// a browser will not let a web page read Plaid's answers unless Plaid allows
+// it. This small program makes the calls instead and holds the Plaid keys. It stores nothing: when a bank is
 // linked, the bank's access token is encrypted with a key derived from this
 // Worker's secrets and handed to the app, which sends it back with each
 // request. Nobody holding the app's saved data can use it without this Worker.

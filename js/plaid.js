@@ -1,13 +1,17 @@
 // Bank connections through Plaid.
 //
-// Plaid cannot be called from a web page: its API needs a secret, and it does
-// not answer browsers. So the app talks to a small relay you host yourself
-// (server/plaid-worker.js), which holds the Plaid keys. The relay keeps no
-// data: after a bank is linked it hands back that bank's access token sealed
-// with a key only it has, and the app sends the sealed token along each time
-// it asks for new transactions.
+// There are two ways to reach Plaid, chosen when the connection is set up:
 //
-// Everything above the "Talking to the relay" line is pure and runs under Node.
+//   direct  The app calls Plaid's API itself, with your Plaid client id and
+//           secret kept on this device. Nothing else to run. It works only if
+//           Plaid's API accepts requests from a web page, which is Plaid's
+//           decision, not this app's: a browser will not hand a page the
+//           answer from another site unless that site allows it.
+//   relay   The app calls a small program you host (server/plaid-worker.js),
+//           which holds the keys and calls Plaid. For when direct is refused.
+//
+// Either way the same four requests are made (see `call`), and everything
+// above the "Talking to Plaid" line is pure and runs under Node.
 
 const round2 = n => Math.round(n * 100) / 100;
 const cents = n => Math.round(n * 100);
@@ -249,10 +253,86 @@ export function cleanRelay(raw) {
   } catch { return null; }
 }
 
-// ── Talking to the relay ─────────────────────────────────────────────────────
+// ── Talking to Plaid ─────────────────────────────────────────────────────────
 
-// conn is { url, key }. Errors carry Plaid's code (e.g. ITEM_LOGIN_REQUIRED).
+const HOSTS = { production: 'https://production.plaid.com', sandbox: 'https://sandbox.plaid.com' };
+const HISTORY_DAYS = 730; // the most Plaid offers
+
+async function plaidPost(conn, path, body) {
+  let res;
+  try {
+    res = await fetch((HOSTS[conn.env] || HOSTS.production) + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: conn.clientId, secret: conn.secret, ...body }),
+    });
+  } catch {
+    // The browser gives a page no detail here: a refused cross-site request
+    // and a dropped connection look the same.
+    const offline = globalThis.navigator?.onLine === false;
+    const e = new Error(offline ? 'You are offline.' : 'The browser was not allowed to reach Plaid from this page. Plaid\'s API does not accept requests from web pages, so a direct connection is not possible; use a relay instead.');
+    e.code = offline ? 'OFFLINE' : 'BLOCKED';
+    throw e;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const e = new Error(data.error_message || `Plaid answered ${res.status}.`);
+    e.code = data.error_code || null;
+    throw e;
+  }
+  return data;
+}
+
+// The same four requests the relay answers, made straight to Plaid. In this
+// mode a bank's access token is kept as it is: without the secret, which never
+// leaves this device, it opens nothing.
+const direct = {
+  async 'link-token'(conn, body) {
+    const req = { client_name: 'FinanceTracker', language: 'en', country_codes: ['US'], user: { client_user_id: 'financetracker-owner' } };
+    if (body.item) req.access_token = body.item;
+    else { req.products = ['transactions']; req.transactions = { days_requested: HISTORY_DAYS }; }
+    if (body.redirect_uri) req.redirect_uri = body.redirect_uri;
+    return { link_token: (await plaidPost(conn, '/link/token/create', req)).link_token };
+  },
+  async exchange(conn, body) {
+    const r = await plaidPost(conn, '/item/public_token/exchange', { public_token: body.public_token });
+    return { item: r.access_token, item_id: r.item_id };
+  },
+  async sync(conn, body) {
+    for (let attempt = 0; ; attempt++) {
+      const added = [], modified = [], removed = [];
+      let cursor = body.cursor || null, more = true, accounts = null;
+      try {
+        for (let pages = 0; more; pages++) {
+          if (pages >= 40) throw new Error('Too much history for one request. Sync again to continue.');
+          const r = await plaidPost(conn, '/transactions/sync', {
+            access_token: body.item, count: 500, ...(cursor ? { cursor } : {}),
+            options: { include_original_description: true, days_requested: HISTORY_DAYS },
+          });
+          added.push(...r.added); modified.push(...r.modified);
+          removed.push(...r.removed.map(x => x.transaction_id));
+          if (r.accounts) accounts = r.accounts;
+          cursor = r.next_cursor; more = r.has_more;
+        }
+      } catch (e) {
+        if (e.code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION' && attempt === 0) continue;
+        throw e;
+      }
+      if (!accounts) accounts = (await plaidPost(conn, '/accounts/get', { access_token: body.item })).accounts;
+      return { added, modified, removed, cursor, accounts };
+    }
+  },
+  async remove(conn, body) {
+    try { await plaidPost(conn, '/item/remove', { access_token: body.item }); }
+    catch (e) { if (e.code !== 'ITEM_NOT_FOUND') throw e; }
+    return { removed: true };
+  },
+};
+
+// conn is { mode: 'direct', clientId, secret, env } or { url, key } for a relay.
+// Errors carry Plaid's code (e.g. ITEM_LOGIN_REQUIRED).
 export async function call(conn, path, body = {}) {
+  if (conn.mode === 'direct') return direct[path](conn, body);
   let res;
   try {
     res = await fetch(`${conn.url}/${path}`, {

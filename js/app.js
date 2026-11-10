@@ -1862,12 +1862,13 @@ async function drainInbox() {
 }
 
 // ── Bank connection (Plaid) ──────────────────────────────────────────────────
-// The relay's address and key are kept on this device only (state.plaid). The
-// linked banks, sealed by the relay, live in settings, so they sync: a second
-// device needs only the relay address and key to fetch from the same banks.
+// How Plaid is reached (your Plaid keys, or a relay's address and key) is kept
+// on this device only (state.plaid). The linked banks live in settings, so
+// they sync: a second device needs only the same keys to fetch from them.
 const PLAID_GUIDE = 'https://github.com/jsandhagen/FinanceTracker/blob/main/server/README.md';
 const PLAID_EVERY = 3 * 60 * 60 * 1000; // banks post new transactions a few times a day
 let plaidBusy = false;
+let plaidMode = 'direct'; // which set-up form is showing
 const plaidItems = () => state.settings.plaid?.items || [];
 // What every merge of transactions goes through before it is saved.
 const settle = list => P.tidy(A.repairStored(list), state.settings.plaid);
@@ -1880,15 +1881,25 @@ function renderPlaid(status = '') {
   const el = $('plaid-body'), items = plaidItems();
   if (demo) { el.innerHTML = '<p>Bank connections are switched off in the demo.</p>'; return; }
   if (!state.plaid) {
-    el.innerHTML = `<p>${items.length
-      ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device. Enter the same relay address and access key to fetch from ${items.length === 1 ? 'it' : 'them'} here too.`
-      : `With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Plaid's keys cannot be kept in a web page, so they live in a small relay that you host (free on Cloudflare). <a href="${PLAID_GUIDE}" target="_blank" rel="noopener">The set-up steps</a> take about ten minutes.`}</p>
+    const again = items.length ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device. Enter the same details here to fetch from ${items.length === 1 ? 'it' : 'them'} too. ` : '';
+    el.innerHTML = plaidMode === 'direct'
+      ? `<p>${again}With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Enter your Plaid keys (Plaid dashboard → Developers → Keys). They are kept on this device only, never synced and never in a backup, and are sent to Plaid and nowhere else.</p>
+      <form class="plaid-form" id="plaid-form">
+        <input class="set-input" id="plaid-client" type="text" placeholder="Plaid client_id" autocomplete="off" spellcheck="false" />
+        <input class="set-input" id="plaid-secret" type="password" placeholder="Plaid secret" autocomplete="off" />
+        <select class="select" id="plaid-env" aria-label="Plaid environment"><option value="production">Production</option><option value="sandbox">Sandbox</option></select>
+        <button class="btn primary">Save</button>
+      </form>
+      <div class="set-status" id="plaid-status">${esc(status)}</div>
+      <p style="margin-top:10px">Save tests the connection. If the browser is not allowed to reach Plaid from a web page, it says so, and the other way in is <button class="link-btn" data-plaid-mode="relay">a relay</button>.</p>`
+      : `<p>${again}A relay is a small program you host (free on Cloudflare) that holds your Plaid keys and calls Plaid for the app. It is only needed if the direct connection is refused. <a href="${PLAID_GUIDE}" target="_blank" rel="noopener">Set-up steps</a>.</p>
       <form class="plaid-form" id="plaid-form">
         <input class="set-input" id="plaid-url" type="text" inputmode="url" placeholder="Relay address (https://….workers.dev)" autocomplete="off" spellcheck="false" />
         <input class="set-input" id="plaid-key" type="password" placeholder="Access key (the APP_KEY you chose)" autocomplete="off" />
         <button class="btn primary">Save</button>
       </form>
-      <div class="set-status" id="plaid-status">${esc(status)}</div>`;
+      <div class="set-status" id="plaid-status">${esc(status)}</div>
+      <p style="margin-top:10px"><button class="link-btn" data-plaid-mode="direct">Back to connecting directly</button></p>`;
     return;
   }
   const rows = items.map(it => {
@@ -1899,11 +1910,11 @@ function renderPlaid(status = '') {
       <span class="tag ${it.error ? 'over' : 'ok'}">${it.error ? (broken ? 'RECONNECT' : 'FAILED') : 'LINKED'}</span>
       <span class="rf-go">${it.error?.code === 'ITEM_LOGIN_REQUIRED' ? `<button class="btn small primary" data-plaid-fix="${esc(it.id)}">Sign in</button>` : ''}<button class="link-btn" data-plaid-remove="${esc(it.id)}">remove</button></span></div>`;
   }).join('');
-  el.innerHTML = `${rows ? `<div class="rf-accounts">${rows}</div>` : '<p>The relay is set up. Connect a bank and its transactions arrive here, then keep arriving.</p>'}
+  el.innerHTML = `${rows ? `<div class="rf-accounts">${rows}</div>` : `<p>${state.plaid.mode === 'direct' ? 'Connected to Plaid directly.' : 'The relay is set up.'} Connect a bank and its transactions arrive here, then keep arriving.</p>`}
     <div class="set-row">
       ${items.length ? `<button class="btn primary" id="plaid-sync"${plaidBusy ? ' disabled' : ''}>${plaidBusy ? 'Syncing…' : 'Sync now'}</button>` : ''}
       <button class="btn${items.length ? '' : ' primary'}" id="plaid-add"${plaidBusy ? ' disabled' : ''}>Connect ${items.length ? 'another' : 'a'} bank</button>
-      <button class="btn" id="plaid-forget">Forget the relay on this device</button>
+      <button class="btn" id="plaid-forget">Forget the ${state.plaid.mode === 'direct' ? 'Plaid keys' : 'relay'} on this device</button>
       <span class="set-status" id="plaid-status">${esc(status)}</span>
     </div>
     ${items.length ? '<p style="margin-top:10px">CSV exports still work alongside this. A transaction that arrives both ways is kept once.</p>' : ''}`;
@@ -2002,21 +2013,28 @@ async function resumeLink() {
 
 $('plaid-body').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const url = P.cleanRelay($('plaid-url').value), key = $('plaid-key').value.trim();
   const say = msg => { $('plaid-status').textContent = msg; };
-  if (!url) { say('Enter the relay address, starting with https://'); return; }
-  if (key.length < 16) { say('Enter the access key: the APP_KEY set on the relay, at least 16 characters.'); return; }
+  let conn;
+  if (plaidMode === 'direct') {
+    conn = { mode: 'direct', clientId: $('plaid-client').value.trim(), secret: $('plaid-secret').value.trim(), env: $('plaid-env').value };
+    if (!conn.clientId || !conn.secret) { say('Enter both the client_id and the secret from the Plaid dashboard.'); return; }
+  } else {
+    conn = { url: P.cleanRelay($('plaid-url').value), key: $('plaid-key').value.trim() };
+    if (!conn.url) { say('Enter the relay address, starting with https://'); return; }
+    if (conn.key.length < 16) { say('Enter the access key: the APP_KEY set on the relay, at least 16 characters.'); return; }
+  }
   say('Checking…');
-  try { await P.call({ url, key }, 'link-token', {}); }
+  try { await P.call(conn, 'link-token', {}); }
   catch (e) { say(e.message); return; }
-  state.plaid = { url, key };
+  state.plaid = conn;
   await store.set('plaid', state.plaid);
   renderPlaid();
   if (plaidItems().length) plaidSync();
 });
 $('plaid-body').addEventListener('click', async ev => {
-  const fix = ev.target.closest('[data-plaid-fix]'), rm = ev.target.closest('[data-plaid-remove]');
-  if (ev.target.closest('#plaid-sync')) plaidSync();
+  const fix = ev.target.closest('[data-plaid-fix]'), rm = ev.target.closest('[data-plaid-remove]'), mode = ev.target.closest('[data-plaid-mode]');
+  if (mode) { plaidMode = mode.dataset.plaidMode; renderPlaid(); }
+  else if (ev.target.closest('#plaid-sync')) plaidSync();
   else if (ev.target.closest('#plaid-add')) plaidLink();
   else if (fix) plaidLink(plaidItems().find(it => it.id === fix.dataset.plaidFix));
   else if (rm) {
@@ -2028,7 +2046,7 @@ $('plaid-body').addEventListener('click', async ev => {
     await commit();
     renderRefresh();
   } else if (ev.target.closest('#plaid-forget')) {
-    if (!confirm('Forget the relay address and key on this device? Linked banks stay linked; enter them again to resume.')) return;
+    if (!confirm('Forget these connection details on this device? Linked banks stay linked; enter the details again to resume.')) return;
     state.plaid = null;
     await store.del('plaid');
     renderPlaid();

@@ -4,7 +4,7 @@
 //   training      [{ text, category }]
 //   settings      { cc_start }
 //   sync          { token, passphrase, gistId, lastSync }   (never synced itself)
-//   plaid         { url, key }   the bank relay's address and access key (never synced)
+//   plaid         { mode: 'direct', clientId, secret, env } or { url, key } for a relay (never synced)
 //   meta          { updatedAt, rulesUpdatedAt }
 
 const DB_NAME = 'financetracker';
