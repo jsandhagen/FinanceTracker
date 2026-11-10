@@ -40,7 +40,7 @@ export const CHECKING_KEYWORD_RULES = [
 
   [['360 performance savings', '360 savings', '360 money market', '360 checking',
     'transfer to savings', 'transfer from savings'], 'Savings Transfer', true],
-  [['capital one mobile pmt', 'capital one crcardpmt', 'bk of amer', 'bank of amer',
+  [['capital one mobile pmt', 'capital one crcardpmt', 'bk of amer', 'bank of amer', 'bofa',
     'chase pmt', 'credit card pmt', 'citi card', 'discover pmt'], 'Credit Card Payment', true],
   [['student loan', 'loan pmt', 'sallie mae', 'navient',
     'first community credit', 'community credit union',
@@ -83,6 +83,8 @@ export const TRANSFER_CATEGORIES = new Set([
 // A deposit filed under one of these is money coming back, not money earned.
 const NOT_SPENDING = new Set(['Income', 'Interest Income', 'Other']);
 const REFUND_RE = /refund|reversal|return|rebate|credit adj/i;
+
+const CARD_PAYMENT_RE = /\bpayment\b|\bpymt\b|\bpmt\b|auto ?pay|thank you/i;
 
 // Short keywords must start a word: 'rent' is not in "CURRENT", 'hoa' not in "WHOA".
 const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -351,6 +353,10 @@ function baseCategory(t, ml) {
   const plaidCat = viaPlaid ? plaidCategory(t.raw_category) : null;
   if (t.kind === 'credit_card') {
     let cat = viaPlaid ? plaidCat || 'Other' : t.raw_category ? categorizeCC(t.raw_category) : 'Other';
+    // Money arriving on a card that calls itself a payment is the bill being
+    // paid, whatever category Plaid gave it. Left as a refund it would come
+    // off spending, and a month's card bill would vanish from the totals.
+    if (viaPlaid && t.amount > 0 && !TRANSFER_CATEGORIES.has(cat) && CARD_PAYMENT_RE.test(t.description)) cat = 'Credit Card Payment';
     const up = t.description.toUpperCase();
     if (up.includes('COTFLT') || up.includes('COTHTL')) cat = 'Travel';
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
@@ -378,6 +384,7 @@ export function amountRuleMatches(rule, merchant, absAmount) {
 export function categorize(stored, rules, training, ml = buildCategorizer(rules, training)) {
   const merchantRules = rules.merchant || {};
   const amountRules = rules.amount_rules || [];
+  const ruled = new Set(); // ids whose category you chose yourself
   const out = stored.map(t => {
     const merchant = normalizeMerchant(t.description);
     let [category, isTransfer, guessed] = baseCategory(t, ml);
@@ -385,6 +392,7 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
       category = merchantRules[merchant];
       isTransfer = TRANSFER_CATEGORIES.has(category);
       guessed = false;
+      ruled.add(t.id);
     }
     const absAmt = Math.abs(t.amount);
     for (const r of amountRules) {
@@ -392,6 +400,7 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
         category = r.category;
         isTransfer = TRANSFER_CATEGORIES.has(category);
         guessed = false;
+        ruled.add(t.id);
       }
     }
     // Money coming back is not income. Every credit on a card that is not a
@@ -418,9 +427,44 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
       refund,
     };
   });
+  pairCardPayments(out, stored, ruled);
   orderWithinDays(out);
   out.sort((a, b) => b.ts - a.ts || b.ord - a.ord);
   return out;
+}
+
+// A card paid from a bank account shows up twice: money leaving the bank
+// account and the same amount arriving on the card a day or so later. Both
+// halves are a transfer. Each is normally recognised by its own wording; this
+// catches a half that was not, by finding its other half. It only looks at
+// cards that came through a bank connection (a card's CSV export labels its
+// payments itself), and never overrides a category you set by rule.
+function pairCardPayments(out, stored, ruled) {
+  const viaPlaid = new Set(stored.filter(t => t.source === 'plaid').map(t => t.id));
+  const credits = out.filter(t => t.kind === 'credit_card' && t.amount > 0 && viaPlaid.has(t.id));
+  if (!credits.length) return;
+  const debits = new Map(); // cents -> bank withdrawals of that amount
+  for (const t of out) {
+    if (t.kind === 'credit_card' || t.amount >= 0) continue;
+    const k = Math.round(-t.amount * 100);
+    if (!debits.has(k)) debits.set(k, []);
+    debits.get(k).push(t);
+  }
+  const used = new Set();
+  const isPayment = t => t.category === 'Credit Card Payment' || t.category === 'Payment';
+  const mark = t => { t.category = 'Credit Card Payment'; t.is_transfer = true; t.refund = false; };
+  for (const c of credits) {
+    const near = (debits.get(Math.round(c.amount * 100)) || [])
+      .filter(d => !used.has(d.id) && Math.abs(d.ts - c.ts) <= 5.5 * 86400000)
+      .sort((a, b) => isPayment(b) - isPayment(a) || Math.abs(a.ts - c.ts) - Math.abs(b.ts - c.ts))[0];
+    if (!near) continue;
+    // One half must already read as a card payment; a refund that happens to
+    // equal some unrelated withdrawal is left alone.
+    if (!isPayment(c) && !isPayment(near)) continue;
+    used.add(near.id);
+    if (!isPayment(c) && !ruled.has(c.id)) mark(c);
+    if (!isPayment(near) && !ruled.has(near.id)) mark(near);
+  }
 }
 
 function fromRule(merchantRules, amountRules, merchant, absAmt) {

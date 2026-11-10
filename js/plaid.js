@@ -14,7 +14,7 @@ const cents = n => Math.round(n * 100);
 const dayNum = iso => { const [y, m, d] = iso.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 86400000); };
 
 export const isPlaid = t => t.source === 'plaid';
-export const emptyState = () => ({ items: [], anchors: {}, alias: {}, removed: [] });
+export const emptyState = () => ({ items: [], anchors: {}, cards: {}, alias: {}, removed: [] });
 
 // A Plaid account -> the account name and kind the rest of the app uses, the
 // same names a Capital One CSV produces, so both sources land in one account.
@@ -58,7 +58,10 @@ export function applySync(transactions, ps, item, res, now = Date.now()) {
     const account = ps.alias[l.account] || l.account;
     labels.set(a.account_id, { kind: l.kind, account });
     const bal = a.balances?.current;
-    if (l.kind !== 'credit_card' && typeof bal === 'number') ps.anchors[account] = { balance: bal, at: now };
+    if (typeof bal !== 'number') continue;
+    // A bank account's balance is money held; a card's is money owed.
+    if (l.kind === 'credit_card') (ps.cards || (ps.cards = {}))[account] = { balance: bal, at: now };
+    else ps.anchors[account] = { balance: bal, at: now };
   }
   const byId = new Map(transactions.map(t => [t.id, t]));
   const gone = new Set((res.removed || []).map(id => `plaid:${id}`));
@@ -92,8 +95,12 @@ export function applySync(transactions, ps, item, res, now = Date.now()) {
 // Plaid rows take the CSV card's name, and the pairing is returned in `alias`
 // so later syncs use it from the start.
 //
+// That only makes sense for cards from the bank the CSVs come from. A card from
+// another bank (`ownCards` lists the ones that may be paired) is a different
+// card however alike two purchases look, and is matched by its own name only.
+//
 // Returns { transactions, alias } and the same array when nothing changed.
-export function reconcile(transactions, { removed = [], alias = {} } = {}) {
+export function reconcile(transactions, { removed = [], alias = {}, ownCards = null } = {}) {
   if (!transactions.some(isPlaid)) return { transactions, alias };
   const dead = new Set(removed);
   for (const t of transactions) if (t.twin) dead.add(t.twin);
@@ -116,7 +123,7 @@ export function reconcile(transactions, { removed = [], alias = {} } = {}) {
   const plaidRows = rows.filter(isPlaid).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const drop = new Set(), pairs = new Map(), twins = new Map();
   const match = (p, reach) => {
-    const day = dayNum(p.date), card = p.kind === 'credit_card';
+    const day = dayNum(p.date), card = p.kind === 'credit_card' && (!ownCards || ownCards.has(p.account));
     let best = null, bestScore = Infinity;
     for (const c of pool.get(`${p.kind}|${cents(p.amount)}`) || []) {
       if (c.used) continue;
@@ -199,9 +206,36 @@ export function fillBalances(transactions, anchors = {}) {
 // alias map is updated in place.
 export function tidy(transactions, ps) {
   if (!ps) return transactions;
-  const r = reconcile(transactions, { removed: ps.removed, alias: ps.alias });
+  const r = reconcile(transactions, { removed: ps.removed, alias: ps.alias, ownCards: csvBankCards(ps) });
   ps.alias = r.alias;
   return fillBalances(r.transactions, ps.anchors);
+}
+
+// CSV exports are Capital One's, so only a Capital One card at Plaid can be the
+// same card as one in a CSV.
+export function csvBankCards(ps) {
+  const own = new Set();
+  for (const it of ps.items || []) {
+    if (!/capital\s*one/i.test(it.name || '')) continue;
+    for (const a of it.accounts || []) if (a.kind === 'credit_card') own.add(a.account);
+  }
+  return own;
+}
+
+// What was owed across all cards before the first stored transaction, which is
+// what the net worth chart starts its card line from. A linked card reports
+// what is owed today, so its starting figure is that less everything charged
+// and paid since. Cards without a connection share the figure typed in
+// Settings (`typed`); when every card is linked, that figure is not needed.
+export function cardStart(transactions, cards = {}, typed = 0) {
+  const moved = new Map(); // card -> net charged over its stored rows
+  for (const t of transactions) if (t.kind === 'credit_card') moved.set(t.account, (moved.get(t.account) || 0) - t.amount);
+  let start = 0, unlinked = false;
+  for (const [account, net] of moved) {
+    const known = cards[account]?.balance;
+    if (typeof known === 'number') start += known - net; else unlinked = true;
+  }
+  return round2(start + (unlinked ? Number(typed) || 0 : 0));
 }
 
 // The relay's address as typed -> a clean https address, or null. Plain http

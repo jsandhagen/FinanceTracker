@@ -134,6 +134,69 @@ assert.ok(P.applySync([], ps, { id: 'i' }, res).filter(t => t.kind === 'credit_c
 // One match alone is not enough to merge two cards.
 assert.deepEqual(P.reconcile([cardRows[0], ...P.applySync([], P.emptyState(), { id: 'i' }, res)]).alias, {});
 
+// ── A card from another bank, paid from the CSV bank's checking account ──
+// Capital One checking and card arrive as CSVs; a Bank of America card arrives
+// through Plaid and is paid from that checking account.
+{
+  const I = await import('../js/insights.js');
+  const chkCsv = ['Account Number,Transaction Description,Transaction Date,Transaction Type,Transaction Amount,Balance',
+    '00001234,ODD WORDING EPAY 8841,04/20/26,Debit,75.00,4375.00',
+    '00001234,Withdrawal to BK OF AMER VISA ONLINE PMT,03/20/26,Debit,300.00,4450.00',
+    '00001234,ACME CORP PAYROLL,03/06/26,Credit,3010.00,4750.00'].join('\n');
+  const capCardCsv = ['Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit',
+    '2026-03-10,2026-03-11,4321,SPOTIFY USA,Other Services,10.99,',
+    '2026-03-12,2026-03-13,4321,NETFLIX.COM,Other Services,15.49,'].join('\n');
+  const boa = [{ account_id: 'boa', type: 'credit', subtype: 'credit card', mask: '7777', balances: { current: 140.99 } }];
+  const boaRes = { accounts: boa, cursor: 'b1', removed: [], modified: [], added: [
+    tx('b1', 'boa', '2026-03-03', 200, 'WHOLE FOODS', 'FOOD_AND_DRINK|FOOD_AND_DRINK_GROCERIES'),
+    tx('b2', 'boa', '2026-03-09', 100, 'DELTA AIR', 'TRAVEL|TRAVEL_FLIGHTS'),
+    // The same amounts, the same week, as the Capital One card: still separate purchases.
+    tx('b3', 'boa', '2026-03-10', 10.99, 'SPOTIFY USA', 'ENTERTAINMENT|ENTERTAINMENT_MUSIC_AND_AUDIO'),
+    tx('b4', 'boa', '2026-03-12', 15.49, 'NETFLIX.COM', 'ENTERTAINMENT|ENTERTAINMENT_TV_AND_MOVIES'),
+    // The bill being paid, worded as a payment but not categorized as one by Plaid.
+    tx('b5', 'boa', '2026-03-21', -300, 'PAYMENT - THANK YOU', null),
+    tx('b6', 'boa', '2026-04-02', 120, 'TARGET', 'GENERAL_MERCHANDISE|GENERAL_MERCHANDISE_SUPERSTORES'),
+    // A payment neither side words clearly, except that Plaid calls the card half one.
+    tx('b7', 'boa', '2026-04-21', -75, 'ONLINE BANKING TRANSFER', 'LOAN_PAYMENTS|LOAN_PAYMENTS_CREDIT_CARD_PAYMENT'),
+    // Money back from a shop: a refund, not a payment.
+    tx('b8', 'boa', '2026-04-05', -30.5, 'TARGET', 'GENERAL_MERCHANDISE|GENERAL_MERCHANDISE_SUPERSTORES'),
+  ] };
+  const bps = P.emptyState();
+  const boaItem = { id: 'boa-item', name: 'Bank of America' };
+  const csv = [...A.parseFile(chkCsv, { name: 'checking.csv' }).transactions, ...A.parseFile(capCardCsv).transactions];
+  bps.items.push(boaItem);
+  const all = P.tidy(P.applySync(csv, bps, boaItem, boaRes), bps);
+  assert.equal(all.filter(P.isPlaid).length, 8, 'no Bank of America purchase is mistaken for a Capital One one');
+  assert.deepEqual(bps.alias, {}, 'the two cards stay two cards');
+  assert.equal(bps.cards['Credit Card ...7777'].balance, 140.99);
+  assert.equal(P.csvBankCards(bps).size, 0);
+  assert.equal(P.csvBankCards({ items: [{ name: 'Capital One', accounts: [{ kind: 'credit_card', account: 'Credit Card ...4321' }] }] }).size, 1);
+
+  const cats = A.categorize(all, { merchant: {}, amount_rules: [] }, []);
+  const by = Object.fromEntries(cats.map(t => [t.id.startsWith('plaid:') ? t.id.slice(6) : t.description, t]));
+  // Both halves of each payment are transfers.
+  for (const k of ['Withdrawal to BK OF AMER VISA ONLINE PMT', 'b5', 'ODD WORDING EPAY 8841', 'b7']) {
+    assert.ok(by[k].is_transfer && by[k].category === 'Credit Card Payment' && !by[k].refund, `${k} is a card payment`);
+  }
+  assert.ok(by.b8.refund && !by.b8.is_transfer && by.b8.category === 'Shopping', 'a refund stays a refund');
+  // Spending is what was bought, once: both cards' purchases less the refund. Paying the bill adds nothing.
+  const sum = I.summarize(cats);
+  assert.ok(Math.abs(sum.expense - (200 + 100 + 10.99 + 15.49 + 120 - 30.5 + 10.99 + 15.49)) < 0.005, `spending ${sum.expense}`);
+  assert.equal(sum.income, 3010, 'a payment landing on the card is not income');
+
+  // A category you set by rule is not overridden by the pairing.
+  const ruled = A.categorize(all, { merchant: { 'ODD WORDING EPAY 8841': 'Housing' }, amount_rules: [] }, []);
+  assert.equal(ruled.find(t => t.description === 'ODD WORDING EPAY 8841').category, 'Housing');
+
+  // Net worth: the Bank of America card starts from what it owes today less
+  // what moved since; the Capital One card, with no connection, uses the typed figure.
+  const boaNet = 200 + 100 + 10.99 + 15.49 - 300 + 120 - 75 - 30.5;
+  assert.equal(P.cardStart(all, bps.cards, 500), Math.round((140.99 - boaNet + 500) * 100) / 100);
+  assert.equal(P.cardStart(all.filter(t => t.account !== 'Credit Card ...4321'), bps.cards, 500), Math.round((140.99 - boaNet) * 100) / 100, 'the typed figure is unused when every card is linked');
+  const series = A.buildAssetSeries(cats, P.cardStart(all, bps.cards, 0));
+  assert.ok(Math.abs(series[series.length - 1].cc_outstanding - (140.99 + 10.99 + 15.49)) < 0.005, 'today the cards owe their real balances');
+}
+
 // ── Relay address ──
 assert.equal(P.cleanRelay(' https://ft.example.workers.dev/ '), 'https://ft.example.workers.dev');
 assert.equal(P.cleanRelay('http://ft.example.workers.dev'), null);

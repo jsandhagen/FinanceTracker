@@ -258,7 +258,7 @@ function rebuild(keepRange) {
   initCharts();
   ALL_TXN = A.categorize(state.transactions, state.rules, state.training);
   STREAMS = A.findRecurringStreams(ALL_TXN);
-  BALANCE = A.buildAssetSeries(ALL_TXN, Number(state.settings.cc_start) || 0);
+  BALANCE = A.buildAssetSeries(ALL_TXN, P.cardStart(state.transactions, state.settings.plaid?.cards, state.settings.cc_start));
 
   const tss = ALL_TXN.map(t => t.ts);
   DATA_MIN = Math.min(...tss);
@@ -275,6 +275,8 @@ function rebuild(keepRange) {
   const accts = new Map();
   for (const t of ALL_TXN) if (!accts.has(t.account)) accts.set(t.account, null);
   for (const t of ALL_TXN) if (t.balance != null && accts.get(t.account) == null) accts.set(t.account, t.balance);
+  // A linked card reports what is owed on it, shown as a negative.
+  for (const [a, c] of Object.entries(state.settings.plaid?.cards || {})) if (accts.has(a) && typeof c.balance === 'number') accts.set(a, -c.balance);
   $('acct-badges').innerHTML = [...accts].sort((a, b) => a[0].localeCompare(b[0])).map(([a, bal]) =>
     `<div class="acct"><span class="acct-name">${esc(a)}</span><span class="acct-bal">${bal == null ? '' : money0(bal)}</span></div>`).join('');
 
@@ -1657,7 +1659,8 @@ function renderRefresh() {
       : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Download ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
       : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
     const since = new Date(A.localTs(f.first)).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-    return `<div class="rf-acct"><span class="rf-name"><b>${esc(acct)}</b><small>${f.balance != null ? `${money(f.balance)} · ` : ''}${f.n.toLocaleString()} transaction${f.n === 1 ? '' : 's'} since ${since}</small></span>
+    const owed = state.settings.plaid?.cards?.[acct]?.balance;
+    return `<div class="rf-acct"><span class="rf-name"><b>${esc(acct)}</b><small>${f.balance != null ? `${money(f.balance)} · ` : typeof owed === 'number' ? `${money(owed)} owed · ` : ''}${f.n.toLocaleString()} transaction${f.n === 1 ? '' : 's'} since ${since}</small></span>
       <span>through ${shortDate(ts)}<small>${periodAdvice(age, from)}</small></span>
       <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span>${action}</div>`;
   }).join('');
@@ -1802,7 +1805,7 @@ function renderAccounts() {
   const hasCard = [...facts.values()].some(f => f.kind === 'credit_card');
   setKpis('acct-kpis', [
     kpiTile({ label: 'In the bank', value: money0(bank), sub: 'checking + savings, latest balances' }),
-    ...(hasCard && owed != null ? [kpiTile({ label: 'Card balance', value: money0(owed), sub: 'estimated; set the start in Settings' })] : []),
+    ...(hasCard && owed != null ? [kpiTile({ label: 'Card balance', value: money0(owed), sub: [...facts].every(([a, f]) => f.kind !== 'credit_card' || typeof state.settings.plaid?.cards?.[a]?.balance === 'number') ? 'from your bank connection' : 'estimated; set the start in Settings' })] : []),
     kpiTile({ label: 'Furthest behind', value: `${behind}<small> days</small>`, tone: behind >= 21 ? 'neg' : '', sub: behind > DEFAULT_PERIOD - OVERLAP ? 'needs a longer Time Period' : 'Last 30 Days covers it' }),
     kpiTile({ label: 'Saved', value: state.transactions.length.toLocaleString(), sub: `transactions in ${facts.size} account${facts.size === 1 ? '' : 's'}` }),
   ]);

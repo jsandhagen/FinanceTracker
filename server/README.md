@@ -61,6 +61,22 @@ entered the relay address and key.
 - **remove** ends the connection at Plaid, which also ends what Plaid bills for it. Transactions
   already in the app stay.
 
+## More than one bank
+
+Connect each bank separately with **Connect another bank**. A card at one bank that you pay from
+an account at another, say a Bank of America card paid from Capital One checking, is handled like
+this:
+
+- What you buy on the card counts as spending, in its category, once.
+- Paying the card is a transfer, not spending and not income, on both sides: the withdrawal from
+  checking and the payment arriving on the card. Each side is recognised by its wording, and when
+  one side is worded unclearly it is found by its other half (the same amount within a few days).
+  If one slips through, tap its category and choose **Credit Card Payment**.
+- The card's balance comes from the bank, so the net worth chart is right without typing a
+  starting balance. The figure in Settings is only used for cards that are not connected.
+- Only a Capital One card can be merged with a card from a CSV export. Purchases on another
+  bank's card are never treated as duplicates of them, however alike two charges look.
+
 ## Changing the keys
 
 The sealed tokens are tied to `APP_KEY` and `PLAID_SECRET`. If you change either, existing
