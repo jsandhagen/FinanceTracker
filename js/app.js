@@ -1324,8 +1324,11 @@ async function ingest(items, { auto = false } = {}) {
 }
 
 async function importFiles(fileList) {
-  const files = [...fileList].filter(f => /\.csv$/i.test(f.name) || /csv|comma-separated/.test(f.type));
-  if (!files.length) { toast('Choose one or more .csv files.', true); return; }
+  // Every file is read and judged by its contents: a phone's file app may hand
+  // over a CSV with no extension or a generic type. Anything that is not a
+  // Capital One export is named in the message and left out.
+  const files = [...fileList].filter(f => f.size <= 25 * 1024 * 1024);
+  if (!files.length) { toast('Choose one or more Capital One .csv exports.', true); return; }
   await ingest(await Promise.all(files.map(async f => ({ name: f.name, text: await f.text() }))));
 }
 
@@ -2019,6 +2022,10 @@ async function registerServiceWorker() {
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
+  // Chrome on Android lists only the apps that declare the requested file type,
+  // and Samsung My Files (among others) does not declare CSV. Asking for any
+  // file lets every file app offer itself; importFiles sorts out the rest.
+  if (isAndroid) for (const id of ['file-input', 'add-input']) $(id).removeAttribute('accept');
   state = await store.loadAll();
   const healed = A.repairStored(state.transactions);
   if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
