@@ -1357,13 +1357,60 @@ function renderRefresh() {
   $('rf-accounts').innerHTML = [...last].sort((a, b) => a[0].localeCompare(b[0])).map(([acct, iso]) => {
     const ts = A.localTs(iso), age = dataAge(ts), from = addDays(ts, -3);
     if (oldest == null || from < oldest) oldest = from;
+    const url = acctLink(acct);
+    const action = linkEdit === acct
+      ? `<form class="rf-link-form" data-acct="${esc(acct)}"><input class="set-input" type="text" inputmode="url" placeholder="Paste this account's page address from Capital One" value="${esc(url || '')}" aria-label="Capital One page for ${esc(acct)}" /><button class="btn small primary">Save</button><button type="button" class="btn small" data-link-cancel>Cancel</button></form>`
+      : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
+      : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
     return `<div class="rf-acct"><span>${esc(acct)}</span>
       <span>through ${shortDate(ts)}<small>export from ${shortDate(from)} or earlier</small></span>
-      <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span></div>`;
+      <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span>${action}</div>`;
   }).join('');
+  const linked = [...last.keys()].filter(acctLink);
+  $('rf-open-all').hidden = linked.length < 2;
+  $('rf-open-all').textContent = `Open all ${linked.length} ↗`;
+  $('rf-open-home').classList.toggle('primary', !linked.length);
+  $('rf-link-note').hidden = !last.size || linked.length === last.size;
   $('rf-hint').textContent = oldest != null ? `One range covers everything: ${shortDate(oldest)} to today.` : 'For a first import, pick the longest range offered.';
   renderWatch();
 }
+
+// A saved shortcut to each account's own page on Capital One. Only you can
+// supply it: the address holds an id that is different for every customer.
+// It lives in settings, so it syncs. Anything that is not a Capital One https
+// address is refused, here and again when it is read back.
+let linkEdit = null;
+function cleanLink(raw) {
+  try {
+    const u = new URL(String(raw).trim());
+    return u.protocol === 'https:' && /(^|\.)capitalone\.com$/i.test(u.hostname) ? u.href : null;
+  } catch { return null; }
+}
+const acctLink = acct => cleanLink(state.settings.links?.[acct] || '');
+
+$('rf-accounts').addEventListener('click', ev => {
+  const edit = ev.target.closest('[data-link-edit]');
+  if (edit) { linkEdit = edit.dataset.linkEdit; renderRefresh(); $('rf-accounts').querySelector('.rf-link-form input')?.focus(); }
+  else if (ev.target.closest('[data-link-cancel]')) { linkEdit = null; renderRefresh(); }
+});
+$('rf-accounts').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const form = ev.target.closest('.rf-link-form');
+  if (!form) return;
+  const raw = form.querySelector('input').value.trim(), url = raw ? cleanLink(raw) : null;
+  if (raw && !url) { toast('That is not a capitalone.com address. Copy it from the address bar while the account is open.', true); return; }
+  const links = { ...(state.settings.links || {}) };
+  if (url) links[form.dataset.acct] = url; else delete links[form.dataset.acct];
+  state.settings.links = links;
+  linkEdit = null;
+  await commit();
+  renderRefresh();
+});
+$('rf-open-all').addEventListener('click', () => {
+  const urls = [...new Set(state.transactions.map(t => t.account))].map(acctLink).filter(Boolean);
+  const opened = urls.filter(u => window.open(u, '_blank')).length;
+  if (opened < urls.length) toast(`The browser held back ${urls.length - opened} of ${urls.length} tabs. Allow pop-ups for this site and they will all open next time.`, true);
+});
 
 let watchState = 'none'; // none | granted | prompt | denied | missing
 function renderWatch() {
@@ -1435,7 +1482,7 @@ $('rf-watch').addEventListener('click', async ev => {
 });
 
 function openRefresh() { renderRefresh(); refreshOverlay.classList.add('open'); }
-function closeRefresh() { refreshOverlay.classList.remove('open'); }
+function closeRefresh() { refreshOverlay.classList.remove('open'); linkEdit = null; }
 $('refresh-open').addEventListener('click', async () => {
   // One click wakes the folder and imports; the sheet only opens if that found nothing to do.
   if ($('refresh-open').dataset.asleep) { await watchScan({ ask: true }); if (watchState === 'granted') return; }

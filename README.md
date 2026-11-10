@@ -80,6 +80,10 @@ on their site. Everything after that click can be automatic:
 3. The browser may ask for the folder again on a later visit (the button reads **Reconnect
    folder**). Choose *Allow on every visit* and it stops asking.
 
+To cut out the clicking around on Capital One: open an account there, copy the address from the
+address bar, and save it under **Refresh data → Add link**. Each account then has an **Open**
+button that goes straight to its page, and **Open all** opens every one in its own tab.
+
 Other ways in: drop files anywhere on the dashboard; on Android, install the app and use
 **Share → FinanceTracker** on a downloaded CSV; on a computer with the app installed,
 **Open with → FinanceTracker**. With sync on, a file imported on one device shows up on the other.
