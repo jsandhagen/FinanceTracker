@@ -206,7 +206,10 @@ function setView(v, { push = true } = {}) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   $('view-title').textContent = VIEWS[v];
   $('filter-bar').hidden = RANGE_FREE.has(v);
-  if (push && location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
+  if (push && location.hash !== '#' + v) {
+    if (history.state?.layer) history.replaceState({ view: v }, '', '#' + v);
+    else history.pushState({ view: v }, '', '#' + v);
+  }
   $('views').scrollTop = 0;
   if (!$('dashboard').hidden) window.scrollTo(0, 0);
   renderActive();
@@ -1523,7 +1526,9 @@ $('rf-watch').addEventListener('click', async ev => {
 // there is no data yet and so no dashboard to show it in.
 function placeRefresh() {
   const home = $('dashboard').hidden ? $('refresh-sheet-body') : $('acct-slot');
-  if ($('refresh-block').parentElement !== home) home.appendChild($('refresh-block'));
+  if ($('refresh-block').parentElement === home) return;
+  home.appendChild($('refresh-block'));
+  if (home === $('acct-slot')) closeRefresh(); // its contents just left the sheet
 }
 
 function renderAccounts() {
@@ -1903,7 +1908,7 @@ function openInstall() {
 }
 function closeInstall() {
   $('install-overlay').classList.remove('open');
-  if (location.hash === '#install') history.replaceState(null, '', location.pathname + location.search);
+  if (location.hash === '#install') history.replaceState(history.state, '', location.pathname + location.search);
 }
 function updateInstallButtons() {
   const show = !isStandalone() && (!!installPrompt || isIOS);
@@ -1939,7 +1944,31 @@ $('close-install').addEventListener('click', closeInstall);
 $('install-overlay').addEventListener('click', ev => { if (ev.target === $('install-overlay')) closeInstall(); });
 window.addEventListener('hashchange', () => {
   const h = location.hash.slice(1);
-  if (h === 'install') openInstall(); else if (VIEWS[h]) setView(h, { push: false });
+  if (h === 'install') openInstall(); else if (VIEWS[h] && h !== view) setView(h, { push: false });
+});
+
+// ── Back button ──────────────────────────────────────────────────────────────
+// Back closes whatever is open (a sheet, the drawer, a menu, the palette), then
+// steps back through the views that were visited, and only leaves the app
+// from the first one. An open layer is one history entry, added when the first
+// layer opens and taken back when the last one closes, however it was closed.
+const layerOpen = () => !!document.querySelector('.overlay.open') || picker.classList.contains('open');
+function closeLayers() {
+  for (const el of document.querySelectorAll('.overlay.open')) el.classList.remove('open');
+  closePicker();
+  linkEdit = null;
+  if (location.hash === '#install') history.replaceState(history.state, '', location.pathname + location.search);
+}
+new MutationObserver(() => {
+  const open = layerOpen();
+  if (open && !history.state?.layer) history.pushState({ view, layer: true }, '', location.href);
+  else if (!open && history.state?.layer) history.back();
+}).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+window.addEventListener('popstate', ev => {
+  if (layerOpen()) { closeLayers(); return; }
+  const v = ev.state?.view || location.hash.slice(1);
+  if (VIEWS[v] && v !== view && !$('dashboard').hidden) setView(v, { push: false });
 });
 
 // ── Auto-update ──────────────────────────────────────────────────────────────
@@ -2032,6 +2061,7 @@ async function boot() {
   await watch.load().catch(() => null);
   if (VIEWS[location.hash.slice(1)]) view = location.hash.slice(1);
   showView();
+  history.replaceState({ view }, '', location.href);
   updateInstallButtons();
   if (location.hash === '#install') openInstall();
   if (state.sync) { setDot('ok'); lastAutoSync = Date.now(); syncNow({ quiet: true }); }
