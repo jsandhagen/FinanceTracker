@@ -1,0 +1,145 @@
+# FinanceTracker for Android
+
+The same app as the website, inside a native wrapper ([Capacitor](https://capacitorjs.com)). It
+exists for one reason: **a native app can call Plaid by itself**, so a bank connection needs no
+relay and nothing hosted.
+
+A web page cannot do that. A browser only lets a page read another site's answer if that site
+allows it, and Plaid's API is built for servers. Inside the wrapper the same requests are made by
+Android, where that rule does not apply.
+
+> **Status: builds, not yet run on a phone.** The code is covered by the tests in `tests/` and the
+> APK is compiled by GitHub Actions, but until it has been installed and a bank has been linked on
+> a real device, treat everything below as untested. Start with Plaid's Sandbox (step 4).
+
+What is different from the website:
+
+| | Website | Android app |
+| --- | --- | --- |
+| Calls to Plaid | refused by the browser, so a relay is needed | made by Android (`CapacitorHttp`), direct |
+| Plaid Link (bank sign-in) | Plaid's web script and a redirect address | Plaid's Android SDK and the app's package name |
+| Plaid client_id and secret | IndexedDB | encrypted with a key in the Android Keystore |
+| Updates | by itself, on every deploy | install a newer APK over the old one |
+| Saving a backup or export | a download | Android's "save to" screen |
+
+Everything else is one codebase: `index.html`, `css/`, `js/`. The only file that knows about the
+wrapper is `js/native.js`, and the native side is three small classes in
+`app/src/main/java/io/github/jsandhagen/financetracker/`.
+
+The website keeps working as it is. Turn on **Settings → Sync between devices** on the phone and
+in the browser, and what the phone fetches from the bank shows up on the website too.
+
+## Setting it up
+
+### 1. A key of your own (once, before the first install)
+
+Android installs an update only over an app signed with the same key. Without a key of your own,
+each build is signed with a throwaway one, the next build will not install over it, and removing
+an app to make room removes its data and its saved Plaid keys. So do this first.
+
+On any computer with Java installed:
+
+```bash
+keytool -genkeypair -v -storetype PKCS12 -keystore financetracker.keystore \
+  -alias financetracker -keyalg RSA -keysize 4096 -validity 10000 \
+  -dname "CN=FinanceTracker"
+base64 -w0 financetracker.keystore   # macOS: base64 -i financetracker.keystore
+```
+
+Keep `financetracker.keystore` and its password somewhere safe (a password manager takes file
+attachments). If it is lost, the next build has to be a fresh install. Then on GitHub, in
+**Settings → Secrets and variables → Actions**, add:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | the output of the `base64` command |
+| `ANDROID_KEYSTORE_PASSWORD` | the password you chose |
+
+(`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` are only needed if you used another alias or a
+separate key password.)
+
+### 2. Build the APK
+
+The **Android** workflow builds on every push that touches the app, and on demand from
+**Actions → Android → Run workflow**.
+
+- From `main`, with the secrets in place, the APK is published at
+  `https://github.com/<you>/FinanceTracker/releases/download/android-latest/FinanceTracker.apk`.
+- Every run also keeps it under **Artifacts** on the run's page (a zip holding the APK; you have
+  to be signed in to GitHub to download it).
+
+The run's summary says which key signed the build.
+
+### 3. Install it (sideloading)
+
+Open the address above in Chrome on the phone, or copy the APK over, and tap it. Android asks once
+to allow installs from that app (Chrome, or your file manager): allow it, then **Install**. Play
+Protect may offer to scan an app it has not seen before; that is fine.
+
+To update, install the newer APK the same way. Your data stays.
+
+### 4. Plaid
+
+1. In the [Plaid dashboard](https://dashboard.plaid.com), under **Developers → API**, add
+   `io.github.jsandhagen.financetracker` to **Allowed Android package names**. Banks that sign you
+   in on their own site or app (Capital One and Bank of America both do) use it to hand you back.
+   No redirect URI is needed for the Android app.
+2. In the app: **Accounts → Bank connection**. Enter the **client_id** and the **secret** for the
+   environment you chose, and press **Save**. Save makes one harmless request to check the keys.
+3. **Try Sandbox first.** Choose *Sandbox*, use the Sandbox secret, connect Plaid's test bank
+   (`user_good` / `pass_good`), and check that transactions arrive. Then **Forget the Plaid keys on
+   this device**, remove the test bank, and enter the Production secret.
+4. **Connect a bank**, once for Capital One and once for Bank of America.
+
+#### Before relying on Plaid's free plan
+
+Plaid's Trial plan is reported to give production access to Capital One and Bank of America at no
+cost, with these limits. **Check them in your own dashboard**; they are Plaid's to change and have
+not been verified here:
+
+- It is offered to teams created on or after 15 April 2026. An older team may need another route
+  to production access.
+- It allows **10 Items in total**, an Item being one bank connection. **Removing a connection does
+  not give the slot back.**
+
+So do not spend them testing. Do the trial runs in Sandbox, which is unlimited. In production,
+connect each bank once and leave it; if a bank asks you to sign in again, use **Sign in** on the
+connection (that repairs the same Item) rather than removing it and connecting again. Capital One
+and Bank of America also have to approve an app for their own sign-in; the dashboard shows that
+status per institution.
+
+## What is stored where
+
+- **Plaid client_id and secret:** encrypted with AES-256-GCM under a key generated inside the
+  Android Keystore, which cannot be taken off the device. Only the ciphertext is written to the
+  app's storage. They are not synced and not in backups, and they are sent to Plaid only.
+- **Each bank's access token:** with the rest of your data (see below), and in the encrypted sync
+  copy so another device can fetch too. Without the secret it opens nothing.
+- **Transactions, rules, settings:** the app's own storage on the phone (IndexedDB), as on the
+  website. Android's cloud backup and device-to-device transfer are switched off for this app, so
+  nothing reaches Google; use the app's sync or **Download backup** to move data.
+
+## Known gaps
+
+- **Share → FinanceTracker** (handing over a CSV from Chrome's downloads) is a feature of the
+  installed website and is not wired into this app. Use the file chooser under **Refresh data**.
+- No automatic updates: there is no store behind it.
+- A relay cannot be used from the Android app. It does not need one.
+
+## Building it yourself
+
+Needs Node 22, JDK 21 and the Android SDK (Android Studio brings both of the last two).
+
+```bash
+npm ci
+npm run android:sync          # gathers the web app into www/ and copies it into android/
+cd android && ./gradlew assembleDebug
+# -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`npm run android:sync` has to be run again after any change to the web files. To sign a release
+locally, set `ANDROID_KEYSTORE_FILE` and `ANDROID_KEYSTORE_PASSWORD` and run
+`./gradlew assembleRelease`.
+
+`www/`, `node_modules/` and the copied web files under `android/app/src/main/assets/` are
+generated and not committed.

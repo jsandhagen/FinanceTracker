@@ -19,8 +19,13 @@ Banks that sign you in on their own site (Capital One, Bank of America) send you
 
 **Whether this works is up to Plaid, not the app.** A browser only lets a page read another
 site's answer if that site allows it, and Plaid's API is built to be called from a server. Save
-tests it: if the browser is refused, the app says so straight away, and the relay below is the
-way in. Nothing about your data changes between the two.
+tests it: if the browser is refused, the app says so straight away. There are then two ways in,
+and nothing about your data changes between them:
+
+- **The Android app**, which is not a web page and so calls Plaid itself, with nothing to host.
+  It is the simpler of the two if you have an Android phone: [android/README.md](../android/README.md).
+  With sync on, what it fetches reaches the website on your other devices.
+- **A relay**, below, for fetching from the browser itself.
 
 ## The fallback: a relay
 

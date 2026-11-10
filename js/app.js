@@ -7,6 +7,7 @@ import { cleanLink, downloadLink } from './links.js';
 import * as T from './tax.js';
 import * as N from './income.js';
 import * as P from './plaid.js';
+import * as native from './native.js';
 import { demoFiles } from './demo.js';
 import { BUILD } from './version.js';
 
@@ -1318,6 +1319,13 @@ $('txn-export').addEventListener('click', () => {
 });
 
 function download(blob, name) {
+  // An embedded web view ignores download links; Android's own save screen is
+  // shown instead.
+  if (native.isNative()) {
+    blob.text().then(text => native.saveFile(name, blob.type || 'application/octet-stream', text))
+      .then(saved => { if (saved) toast(`Saved ${name}.`); }, e => toast(e.message, true));
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -1798,7 +1806,11 @@ $('rf-open-all').addEventListener('click', () => {
 let watchState = 'none'; // none | granted | prompt | denied | missing
 function renderWatch() {
   const el = $('rf-watch'), w = watch.current();
-  $('rf-watch-title').textContent = isAndroid ? 'On this phone: share the download to the app' : 'Or skip step 2: watch a folder';
+  $('rf-watch-title').textContent = native.isNative() ? 'On this phone: pick the download' : isAndroid ? 'On this phone: share the download to the app' : 'Or skip step 2: watch a folder';
+  if (native.isNative()) {
+    el.innerHTML = '<p>Chrome keeps its downloads where other apps cannot look, so after pressing <b>Download</b> on Capital One, come back here, tap <b>Drop CSV files here, or tap to choose</b> above and find the CSV under <b>Downloads</b>. With a bank connected, none of this is needed.</p>';
+    return;
+  }
   if (isAndroid) {
     const installed = isStandalone();
     el.innerHTML = `<p>Chrome on Android keeps downloads in its own private folder, which other apps cannot look into, so the app cannot pick them up by itself, and the file chooser above may not show them. Chrome can hand them over:</p>
@@ -1954,6 +1966,8 @@ async function drainInbox() {
 // on this device only (state.plaid). The linked banks live in settings, so
 // they sync: a second device needs only the same keys to fetch from them.
 const PLAID_GUIDE = 'https://github.com/jsandhagen/FinanceTracker/blob/main/server/README.md';
+const ANDROID_GUIDE = 'https://github.com/jsandhagen/FinanceTracker/blob/main/android/README.md';
+let appId = ''; // the Android package name, in the Android app
 const PLAID_EVERY = 3 * 60 * 60 * 1000; // banks post new transactions a few times a day
 let plaidBusy = false;
 let plaidMode = 'direct'; // which set-up form is showing
@@ -1969,9 +1983,10 @@ function renderPlaid(status = '') {
   const el = $('plaid-body'), items = plaidItems();
   if (demo) { el.innerHTML = '<p>Bank connections are switched off in the demo.</p>'; return; }
   if (!state.plaid) {
-    const again = items.length ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device. Enter the same details here to fetch from ${items.length === 1 ? 'it' : 'them'} too. ` : '';
-    el.innerHTML = plaidMode === 'direct'
-      ? `<p>${again}With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Enter your Plaid keys (Plaid dashboard → Developers → Keys). They are kept on this device only, never synced and never in a backup, and are sent to Plaid and nowhere else.</p>
+    const onDevice = native.isNative();
+    const again = items.length ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device${onDevice ? '' : ', and what it fetches arrives here through sync'}. Enter the same details here to fetch from ${items.length === 1 ? 'it' : 'them'} too${onDevice ? '' : ' (from a web page that needs a relay)'}. ` : '';
+    el.innerHTML = plaidMode === 'direct' || onDevice
+      ? `<p>${again}With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Enter your Plaid keys (Plaid dashboard → Developers → Keys). They are kept on this device only, ${onDevice ? 'encrypted with a key held in the Android Keystore, ' : ''}never synced and never in a backup, and are sent to Plaid and nowhere else.</p>
       <form class="plaid-form" id="plaid-form">
         <input class="set-input" id="plaid-client" type="text" placeholder="Plaid client_id" autocomplete="off" spellcheck="false" />
         <input class="set-input" id="plaid-secret" type="password" placeholder="Plaid secret" autocomplete="off" />
@@ -1979,7 +1994,9 @@ function renderPlaid(status = '') {
         <button class="btn primary">Save</button>
       </form>
       <div class="set-status" id="plaid-status">${esc(status)}</div>
-      <p style="margin-top:10px">Save tests the connection. If the browser is not allowed to reach Plaid from a web page, it says so, and the other way in is <button class="link-btn" data-plaid-mode="relay">a relay</button>.</p>`
+      <p style="margin-top:10px">${onDevice
+    ? `Save tests the keys. Before connecting a bank, register this app's package name, <b>${esc(appId || 'shown here once the app has loaded')}</b>, in the Plaid dashboard under Developers → API → Allowed Android package names. <a href="${ANDROID_GUIDE}" target="_blank" rel="noopener">Set-up steps</a>.`
+    : `Save tests the connection. If the browser is not allowed to reach Plaid from a web page, it says so. The ways in are then <a href="${ANDROID_GUIDE}" target="_blank" rel="noopener">the Android app</a>, which calls Plaid itself and passes what it fetches to this device through sync, or <button class="link-btn" data-plaid-mode="relay">a relay</button>.`}</p>`
       : `<p>${again}A relay is a small program you host (free on Cloudflare) that holds your Plaid keys and calls Plaid for the app. It is only needed if the direct connection is refused. <a href="${PLAID_GUIDE}" target="_blank" rel="noopener">Set-up steps</a>.</p>
       <form class="plaid-form" id="plaid-form">
         <input class="set-input" id="plaid-url" type="text" inputmode="url" placeholder="Relay address (https://….workers.dev)" autocomplete="off" spellcheck="false" />
@@ -2056,6 +2073,13 @@ async function plaidLink(item = null) {
   const ask = body => P.call(state.plaid, 'link-token', { ...body, ...(item ? { item: item.sealed } : {}) });
   try {
     let token;
+    // In the Android app the bank comes back by package name, and Plaid's SDK
+    // sees the whole sign-in through: there is no return trip to resume.
+    if (native.isNative()) {
+      token = (await ask({ android_package_name: await native.packageName() })).link_token;
+      await finishLink(await P.openLink(token), item);
+      return;
+    }
     try { token = (await ask({ redirect_uri: here })).link_token; }
     catch (e) {
       // The return address has to be listed in the Plaid dashboard. Until it
@@ -2114,8 +2138,9 @@ $('plaid-body').addEventListener('submit', async ev => {
   say('Checking…');
   try { await P.call(conn, 'link-token', {}); }
   catch (e) { say(e.message); return; }
+  try { await store.setPlaid(conn); }
+  catch (e) { say(e.message); return; }
   state.plaid = conn;
-  await store.set('plaid', state.plaid);
   renderPlaid();
   if (plaidItems().length) plaidSync();
 });
@@ -2136,7 +2161,7 @@ $('plaid-body').addEventListener('click', async ev => {
   } else if (ev.target.closest('#plaid-forget')) {
     if (!confirm('Forget these connection details on this device? Linked banks stay linked; enter the details again to resume.')) return;
     state.plaid = null;
-    await store.del('plaid');
+    await store.delPlaid();
     renderPlaid();
   }
 });
@@ -2409,7 +2434,7 @@ let installPrompt = null;
 const ua = navigator.userAgent;
 const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/.test(ua);
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isStandalone = () => native.isNative() || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const SHARE_GLYPH = '<span class="glyph" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></span>';
 
 function renderInstall() {
@@ -2570,6 +2595,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 $('check-update').addEventListener('click', async () => {
+  if (native.isNative()) { toast('The Android app updates when you install a newer APK.'); return; }
   if (!swReg) { toast('Updates only apply to the deployed site.'); return; }
   try { await swReg.update(); }
   catch { toast("Couldn't reach the server. Check your connection.", true); return; }
@@ -2582,7 +2608,8 @@ $('check-update').addEventListener('click', async () => {
 });
 
 async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  // The Android app carries its files inside the APK: nothing to cache or update.
+  if (native.isNative() || !('serviceWorker' in navigator) || location.protocol === 'file:') return;
   // Only a worker *replacing* one counts as an update; the very first install
   // also fires controllerchange and must not reload the page. Tracked per change,
   // not once at load, or a first visit would never pick up a later deploy.
@@ -2606,6 +2633,7 @@ async function boot() {
   // file lets every file app offer itself; importFiles sorts out the rest.
   if (isAndroid) for (const id of ['file-input', 'add-input']) $(id).removeAttribute('accept');
   state = await store.loadAll();
+  if (native.isNative()) appId = await native.packageName().catch(() => '');
   const healed = settle(state.transactions);
   if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
   await watch.load().catch(() => null);

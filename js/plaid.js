@@ -10,8 +10,13 @@
 //   relay   The app calls a small program you host (server/plaid-worker.js),
 //           which holds the keys and calls Plaid. For when direct is refused.
 //
+// The Android app (js/native.js) is not a web page, so direct always works
+// there: its requests are made by Android, and Link is Plaid's Android SDK.
+//
 // Either way the same four requests are made (see `call`), and everything
 // above the "Talking to Plaid" line is pure and runs under Node.
+
+import * as native from './native.js';
 
 const round2 = n => Math.round(n * 100) / 100;
 const cents = n => Math.round(n * 100);
@@ -258,13 +263,32 @@ export function cleanRelay(raw) {
 const HOSTS = { production: 'https://production.plaid.com', sandbox: 'https://sandbox.plaid.com' };
 const HISTORY_DAYS = 730; // the most Plaid offers
 
+const plaidFail = (data, status) => {
+  const e = new Error(data.error_message || `Plaid answered ${status}.`);
+  e.code = data.error_code || null;
+  return e;
+};
+
 async function plaidPost(conn, path, body) {
+  const url = (HOSTS[conn.env] || HOSTS.production) + path;
+  const payload = { client_id: conn.clientId, secret: conn.secret, ...body };
+  if (native.isNative()) {
+    let r;
+    try { r = await native.postJson(url, payload); }
+    catch {
+      const e = new Error(globalThis.navigator?.onLine === false ? 'You are offline.' : 'Could not reach Plaid. Check your connection.');
+      e.code = 'OFFLINE';
+      throw e;
+    }
+    if (r.status < 200 || r.status >= 300) throw plaidFail(r.data, r.status);
+    return r.data;
+  }
   let res;
   try {
-    res = await fetch((HOSTS[conn.env] || HOSTS.production) + path, {
+    res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: conn.clientId, secret: conn.secret, ...body }),
+      body: JSON.stringify(payload),
     });
   } catch {
     // The browser gives a page no detail here: a refused cross-site request
@@ -275,11 +299,7 @@ async function plaidPost(conn, path, body) {
     throw e;
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const e = new Error(data.error_message || `Plaid answered ${res.status}.`);
-    e.code = data.error_code || null;
-    throw e;
-  }
+  if (!res.ok) throw plaidFail(data, res.status);
   return data;
 }
 
@@ -291,7 +311,11 @@ const direct = {
     const req = { client_name: 'FinanceTracker', language: 'en', country_codes: ['US'], user: { client_user_id: 'financetracker-owner' } };
     if (body.item) req.access_token = body.item;
     else { req.products = ['transactions']; req.transactions = { days_requested: HISTORY_DAYS }; }
-    if (body.redirect_uri) req.redirect_uri = body.redirect_uri;
+    // A bank that signs you in on its own site has to know where to send you
+    // back: a web address for a page, the app's package name on Android. Plaid
+    // accepts one or the other, never both.
+    if (body.android_package_name) req.android_package_name = body.android_package_name;
+    else if (body.redirect_uri) req.redirect_uri = body.redirect_uri;
     return { link_token: (await plaidPost(conn, '/link/token/create', req)).link_token };
   },
   async exchange(conn, body) {
@@ -371,8 +395,10 @@ function loadLink() {
 
 // Opens Link. Resolves with { public_token, institution } once a bank is
 // linked, or null if the window was closed. `receivedRedirectUri` continues a
-// sign-in that left for the bank's own site and came back.
+// sign-in that left for the bank's own site and came back. In the Android app
+// Plaid's own SDK shows Link and handles that round trip itself.
 export async function openLink(token, receivedRedirectUri = null) {
+  if (native.isNative()) return native.openLink(token);
   await loadLink();
   return new Promise(resolve => {
     const handler = window.Plaid.create({

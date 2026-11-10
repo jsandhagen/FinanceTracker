@@ -1,0 +1,145 @@
+# Builds the Android app (the web app inside a Capacitor wrapper; see
+# android/README.md) and keeps the APK as a download on the run's page.
+#
+# With the signing secrets set (android/README.md, "A key of your own") the
+# build is a release signed with your key, and a push to main also publishes it
+# as the "android-latest" release, so a phone can download it from one address.
+# Without them it is a debug build signed with a throwaway key: fine to try,
+# but Android will not install the next build over it.
+name: Android
+
+on:
+  push:
+    paths:
+      - 'android/**'
+      - 'js/**'
+      - 'css/**'
+      - 'vendor/**'
+      - 'icons/**'
+      - 'index.html'
+      - 'manifest.webmanifest'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.json'
+      - 'tools/build-www.mjs'
+      - 'tools/make_icons.py'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # only used to publish the release from main
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - name: Test
+        run: |
+          npm test
+          node --check js/app.js
+
+      - name: Gather the web app and hand it to the Android project
+        run: |
+          BUILD="${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M)"
+          echo "APP_VERSION_NAME=$BUILD" >> "$GITHUB_ENV"
+          # Higher on every run, which is what lets a build install over the last.
+          echo "APP_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          node tools/build-www.mjs "$BUILD"
+          npx cap sync android
+
+      - name: Signing key
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/financetracker.keystore"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/financetracker.keystore" >> "$GITHUB_ENV"
+            echo "own=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "own=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build (release, signed with your key)
+        if: steps.key.outputs.own == 'true'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/FinanceTracker.apk"
+
+      - name: Build (debug, throwaway key)
+        if: steps.key.outputs.own != 'true'
+        working-directory: android
+        run: |
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/FinanceTracker.apk"
+
+      - name: Which key signed it
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/FinanceTracker.apk" | tee "$RUNNER_TEMP/certs.txt"
+          grep -m1 'SHA-256' "$RUNNER_TEMP/certs.txt" | sed 's/.*: //' > "$RUNNER_TEMP/sha256.txt"
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/financetracker.keystore"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FinanceTracker-apk
+          path: ${{ runner.temp }}/FinanceTracker.apk
+          if-no-files-found: error
+
+      - name: Publish as the android-latest release
+        if: steps.key.outputs.own == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Build $APP_VERSION_NAME (version code $APP_VERSION_CODE). Install steps: android/README.md."
+          if gh release view android-latest >/dev/null 2>&1; then
+            gh release upload android-latest "$RUNNER_TEMP/FinanceTracker.apk" --clobber
+            gh release edit android-latest --notes "$NOTES" --target "$GITHUB_SHA"
+          else
+            gh release create android-latest "$RUNNER_TEMP/FinanceTracker.apk" --title "FinanceTracker for Android" --notes "$NOTES" --target "$GITHUB_SHA" --prerelease
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### FinanceTracker.apk, build $APP_VERSION_NAME"
+            if [ "${{ steps.key.outputs.own }}" = "true" ]; then
+              echo "Release build, signed with your key. It installs over earlier builds signed with the same key."
+            else
+              echo "Debug build, signed with a key made for this run only. Android will not install a later build over it, and removing an app removes its data. Add the signing secrets before putting real data in the app: see android/README.md."
+            fi
+            echo
+            echo "Signing certificate SHA-256: \`$(cat "$RUNNER_TEMP/sha256.txt" 2>/dev/null)\`"
+            echo
+            echo "Download **FinanceTracker-apk** from the Artifacts section of this run."
+          } >> "$GITHUB_STEP_SUMMARY"

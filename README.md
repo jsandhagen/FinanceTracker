@@ -8,9 +8,12 @@
   <a href="https://jsandhagen.github.io/FinanceTracker/#install"><img src="https://img.shields.io/badge/Install%20the%20app-8b5cf6?style=for-the-badge" alt="Install the app" height="40" /></a>
   &nbsp;
   <a href="https://jsandhagen.github.io/FinanceTracker/"><img src="https://img.shields.io/badge/Open%20in%20browser-1e293b?style=for-the-badge" alt="Open in browser" height="40" /></a>
+  &nbsp;
+  <a href="https://github.com/jsandhagen/FinanceTracker/releases/download/android-latest/FinanceTracker.apk"><img src="https://img.shields.io/badge/Android%20app%20(APK)-3ddc84?style=for-the-badge" alt="Download the Android app" height="40" /></a>
 </p>
 
-<p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.</sub></p>
+<p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.<br />
+The <b>Android app</b> is the full app with a direct bank connection: download it on the phone, install it, then add your Plaid keys under <b>Accounts → Bank connection</b>. <a href="android/README.md">Set-up steps</a>.</sub></p>
 
 ---
 
@@ -35,7 +38,8 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   what you keep of it, how each tax moves, and what it does to your savings rate. Its
   month-by-month tracking counts only sources typed Salary.
 - **Optional bank connection through Plaid**, so new transactions arrive without downloading
-  anything. See [server/README.md](server/README.md).
+  anything. The [Android app](android/README.md) connects by itself, with nothing to host; a
+  browser needs a small relay ([server/README.md](server/README.md)).
 - **Fast to get around.** `Ctrl`/`⌘` + `K` opens a command palette for views, periods,
   categories and merchants; `1`–`7` switch views. Tap any transaction for its detail and the
   merchant's history. The side rail collapses to icons.
@@ -80,6 +84,21 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 Install it rather than only bookmarking it: Safari may clear storage for websites you have not
 visited in a while, but not for apps on the home screen.
 
+### As a native Android app
+
+There is also an Android build of the same code, for connecting to your bank through Plaid with
+no server in between.
+
+1. On the phone, download **[FinanceTracker.apk](https://github.com/jsandhagen/FinanceTracker/releases/download/android-latest/FinanceTracker.apk)** and open it. Android asks once to allow
+   installs from Chrome (or your file manager): allow it, then **Install**.
+2. Open the app, go to **Accounts → Bank connection**, enter your Plaid **client_id** and
+   **secret**, and press **Save**. They are encrypted on the phone and sent only to Plaid.
+3. **Connect a bank.**
+
+Before step 3, the app's package name has to be registered in the Plaid dashboard, and a signing
+key has to be set up once so updates install over the app without losing its data. Both are in
+[android/README.md](android/README.md).
+
 ## Salary & raises
 
 The figures are estimates for tax year 2026, built from the federal brackets and standard
@@ -99,7 +118,8 @@ the deposits from sources typed Salary with what the plan expects on each payday
 
 ## Refreshing your data
 
-The hands-off way is a [bank connection through Plaid](server/README.md). Without one, the export
+The hands-off way is a bank connection through Plaid: from the [Android app](android/README.md)
+directly, or from a browser through a [relay](server/README.md). Without one, the export
 is a click on Capital One's site, and everything after that click can be automatic:
 
 1. **Refresh data → Choose a folder to watch** (Chrome or Edge on a computer) and pick the folder
@@ -156,6 +176,10 @@ same synthetic exports and checks that totals, every category, the recurring str
 assets series agree:
 
 ```bash
+npm test    # every tests/*.test.mjs
+```
+
+```bash
 python tests/make_fixtures.py /tmp/fx
 echo '{"merchant": {}, "amount_rules": []}' > /tmp/rules.json
 python tests/run_python.py ../FinanceTracker /tmp/fx /tmp/rules.json /tmp/py.json
@@ -184,5 +208,10 @@ updates never touch it. **Settings → App version** shows which commit is runni
 
 If the tests fail the deploy stops and the live app stays as it was. A new file the app loads
 must be added to `SHELL` in `sw.js` so it is available offline.
+
+`package.json`, `capacitor.config.json` and `android/` exist only to package the Android app
+([android/README.md](android/README.md)); the website still has no build step and does not use
+them. A new file the app loads is picked up by the Android build by itself if it sits in `js/`,
+`css/`, `vendor/` or `icons/` (`tools/build-www.mjs`).
 
 `vendor/chart.umd.min.js` is Chart.js 4.4.3 (MIT), vendored so the app works offline.
