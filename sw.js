@@ -8,9 +8,9 @@ const BUILD = '__BUILD__';
 const CACHE = `financetracker-${BUILD}`;
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
-  './css/app.css', './css/pwa.css',
+  './css/app.css',
   './js/app.js', './js/analyzer.js', './js/categorizer.js', './js/csv.js',
-  './js/storage.js', './js/sync.js', './js/version.js',
+  './js/storage.js', './js/sync.js', './js/version.js', './js/insights.js', './js/demo.js',
   './vendor/chart.umd.min.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];

@@ -17,6 +17,16 @@
 A private spending dashboard for Capital One CSV exports (360 Checking, 360 Savings, credit card).
 It runs entirely in the browser, installs as an app on a phone or computer, and works offline.
 
+- **Six views, one console.** Overview (net worth, income, spending, savings rate, each against
+  the period before), Cash flow (a flow-of-funds diagram and a month-by-month table), Spending
+  (categories, trend, a daily heatmap, merchants, weekdays), Budgets (monthly limits per
+  category with a pace marker), Recurring (detected bills and paychecks with their next expected
+  date) and the Transactions ledger (search, sort, filter, export to CSV).
+- **Fast to get around.** `Ctrl`/`⌘` + `K` opens a command palette for views, periods,
+  categories and merchants; `1`–`6` switch views. Tap any transaction for its detail and the
+  merchant's history.
+- **Try it first.** "Explore with demo data" on the first screen loads synthetic accounts.
+  Nothing from the demo is saved.
 - **Your data stays on your device.** CSVs are read in the browser and saved in its local
   storage (IndexedDB). Nothing is uploaded anywhere unless you turn on sync.
 - **Upload once, then just add.** New exports are merged in and transactions already saved are
@@ -86,6 +96,7 @@ echo '{"merchant": {}, "amount_rules": []}' > /tmp/rules.json
 python tests/run_python.py ../FinanceTracker /tmp/fx /tmp/rules.json /tmp/py.json
 node tests/parity.mjs /tmp/fx /tmp/py.json /tmp/rules.json
 node tests/sync.test.mjs
+node tests/insights.test.mjs
 ```
 
 The one deliberate difference from the Python version is the auto-categorizer: scikit-learn's

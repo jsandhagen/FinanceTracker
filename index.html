@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>FinanceTracker</title>
   <meta name="description" content="Private spending dashboard for Capital One CSV exports. Runs entirely on your device." />
-  <meta name="theme-color" content="#080c14" />
+  <meta name="theme-color" content="#111418" />
+  <meta name="color-scheme" content="dark" />
   <meta name="robots" content="noindex" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -15,215 +16,351 @@
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="css/app.css" />
-  <link rel="stylesheet" href="css/pwa.css" />
   <script src="vendor/chart.umd.min.js"></script>
 </head>
 <body>
 
-<div class="blob blob-1"></div>
-<div class="blob blob-2"></div>
-<div class="blob blob-3"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-overview" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></g>
+    <g id="i-cashflow" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h4c3 0 3 8 6 8h2M2 12h4c3 0 3-8 6-8h2"/></g>
+    <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
+    <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
+    <g id="i-recurring" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M13 6V3M13 6h-3M13 6a5.5 5.5 0 1 0 .5 3.5"/></g>
+    <g id="i-transactions" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M5 4h9M5 8h9M5 12h9M2 4h.5M2 8h.5M2 12h.5"/></g>
+    <g id="i-search" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></g>
+    <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 3v10M3 8h10"/></g>
+    <g id="i-cog" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></g>
+    <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></g>
+    <g id="i-x" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4 4l8 8M12 4l-8 8"/></g>
+    <g id="i-lock" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="7" width="9" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></g>
+  </defs>
+</svg>
 
 <!-- ── First run: nothing stored yet ── -->
 <section class="welcome" id="welcome" hidden>
-  <div class="logo">FinanceTracker</div>
-  <h1>Know your <span>money</span></h1>
-  <p class="subtitle">Upload Capital One CSV exports to visualise spending patterns, net cashflow, and recurring transactions.</p>
+  <div class="welcome-inner">
+    <div class="brand-mark"><span class="brand-glyph"></span>FINANCETRACKER</div>
+    <h1>Your money, as an operating picture.</h1>
+    <p class="subtitle">Drop in Capital One CSV exports to get net worth, cash flow, budgets, recurring bills and every transaction in one console. Nothing leaves this device.</p>
 
-  <div class="card upload-card">
-    <div class="drop-zone" id="drop-zone">
-      <input type="file" id="file-input" accept=".csv,text/csv" multiple />
-      <span class="drop-icon">📂</span>
-      <div class="drop-label">Drop CSV files here</div>
-      <div class="drop-hint">or tap to browse, multiple files supported</div>
+    <div class="panel upload-panel">
+      <div class="panel-head"><span class="panel-title">Ingest</span><span class="panel-meta">CSV · local only</span></div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".csv,text/csv" multiple />
+        <svg class="drop-icon" viewBox="0 0 16 16" width="28" height="28"><use href="#i-download"/></svg>
+        <div class="drop-label">Drop CSV files here</div>
+        <div class="drop-hint">or tap to browse, multiple files supported</div>
+      </div>
+      <div class="supported">
+        <span class="tag">360 Checking</span>
+        <span class="tag">360 Savings</span>
+        <span class="tag">Capital One Credit Card</span>
+      </div>
+      <div class="welcome-actions">
+        <button class="btn" id="welcome-demo">Explore with demo data</button>
+        <button class="btn" id="welcome-sync">Set up sync</button>
+        <label class="btn file-btn">Restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" /></label>
+      </div>
     </div>
-    <div class="supported">
-      <span class="badge">✓ 360 Checking</span>
-      <span class="badge">✓ 360 Savings</span>
-      <span class="badge">✓ Capital One Credit Card</span>
-    </div>
-    <div class="welcome-alt">
-      Already use this on another device?
-      <button class="link-btn" id="welcome-sync">Set up sync</button>
-      or <label class="link-btn" style="position:relative;overflow:hidden">restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" style="position:absolute;inset:0;opacity:0" /></label>
-    </div>
+    <p class="welcome-alt" id="welcome-install-row"><button class="link-btn" id="welcome-install">Install as an app</button> for your home screen or desktop</p>
+    <p class="privacy-note"><svg viewBox="0 0 16 16" width="12" height="12"><use href="#i-lock"/></svg> Files are read in the browser and saved locally, so next time the dashboard opens straight away.</p>
   </div>
-  <p class="welcome-alt" id="welcome-install-row"><button class="link-btn" id="welcome-install">⤓ Install as an app</button> for your home screen or desktop</p>
-  <p class="privacy-note">Your files never leave this device. They are read in the browser and saved locally, so next time the dashboard opens straight away.</p>
 </section>
 
-<!-- ── Dashboard ── -->
-<div class="wrapper" id="dashboard" hidden>
+<!-- ── App ── -->
+<div class="app" id="dashboard" hidden>
 
-  <header>
-    <div class="brand">FinanceTracker</div>
-    <div class="header-right">
-      <div class="acct-badges" id="acct-badges"></div>
-      <label class="hdr-btn primary" title="Add more CSV exports; duplicates are skipped">
-        + Add CSVs
-        <input type="file" id="add-input" accept=".csv,text/csv" multiple />
-      </label>
-      <button class="hdr-btn" id="install-btn" hidden>⤓ Install</button>
-      <button class="hdr-btn" id="open-settings"><span class="sync-dot" id="sync-dot"></span>Settings</button>
+  <aside class="nav">
+    <div class="brand-mark"><span class="brand-glyph"></span>FINANCETRACKER</div>
+    <nav class="nav-list" id="nav-list">
+      <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
+      <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
+      <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>3</kbd></button>
+      <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span><kbd>4</kbd></button>
+      <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
+      <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
+    </nav>
+    <div class="nav-section">
+      <div class="nav-label">Accounts</div>
+      <div class="acct-list" id="acct-badges"></div>
     </div>
-  </header>
+    <div class="nav-foot">
+      <button class="btn block" id="install-btn" hidden>Install app</button>
+    </div>
+  </aside>
 
-  <div class="filter-bar">
-    <span class="filter-label">Period</span>
-    <button class="preset-btn" data-days="30">30d</button>
-    <button class="preset-btn" data-days="90">3m</button>
-    <button class="preset-btn" data-days="180">6m</button>
-    <button class="preset-btn" data-days="365">1y</button>
-    <button class="preset-btn active" data-days="0">All</button>
-    <span class="date-sep">|</span>
-    <input type="date" id="date-start" />
-    <span class="date-sep">→</span>
-    <input type="date" id="date-end" />
-    <span class="filter-range-disp" id="range-disp"></span>
-  </div>
-
-  <div class="summary-grid">
-    <div class="card summary-card income d1">
-      <div class="sum-label">Total Money In</div>
-      <div class="sum-val" id="v-income">—</div>
-      <div class="sum-sub">Payroll &amp; deposits</div>
-    </div>
-    <div class="card summary-card expense d2">
-      <div class="sum-label">Total Spent</div>
-      <div class="sum-val" id="v-expense">—</div>
-      <div class="sum-sub">Real spending only</div>
-    </div>
-    <div class="card summary-card net pos d3" id="net-card">
-      <div class="sum-label">Net Cashflow</div>
-      <div class="sum-val" id="v-net">—</div>
-      <div class="sum-sub">Income minus spending</div>
-    </div>
-    <div class="card summary-card xfr d4">
-      <div class="sum-label">Transfers Excluded</div>
-      <div class="sum-val" id="v-xfr">—</div>
-      <div class="sum-sub">CC payments · savings · P2P</div>
-    </div>
-    <div class="card summary-card count d5">
-      <div class="sum-label">Transactions</div>
-      <div class="sum-val" id="v-count">—</div>
-      <div class="sum-sub" id="txn-sub">Across all accounts</div>
-    </div>
-  </div>
-
-  <div class="xfr-note">
-    ⚡ <span><strong>Transfer-aware:</strong>
-    Credit card payments, savings transfers, and P2P payments are excluded from income &amp; spending totals to avoid double-counting.
-    They appear in the table below (highlighted) when "Show transfers" is checked.</span>
-  </div>
-
-  <div class="charts-row">
-    <div class="card chart-card d1">
-      <h2>Spending by Category</h2>
-      <canvas id="donut-chart"></canvas>
-      <div id="cat-legend"></div>
-    </div>
-    <div class="card chart-card d2">
-      <h2>Monthly Cashflow</h2>
-      <canvas id="monthly-chart"></canvas>
-    </div>
-  </div>
-
-  <div class="card chart-card balance-card d1" id="balance-card" hidden>
-    <h2>Total Assets &amp; Liabilities <span style="font-size:0.72rem;color:var(--dim);font-weight:400;margin-left:0.5rem;">Checking + Savings · CC balance estimated from first transaction</span></h2>
-    <canvas id="balance-chart"></canvas>
-  </div>
-
-  <div class="bottom-grid">
-    <div class="card d1">
-      <div class="section-title">Recurring Transaction Streams</div>
-      <div id="streams-list"></div>
-      <div id="streams-pagination" class="streams-pagination"></div>
-    </div>
-    <div class="card d2">
-      <div class="section-title">Top Spending Merchants</div>
-      <div id="merchant-list"></div>
-    </div>
-  </div>
-
-  <div class="card cp-card d1" id="cashflow-predictor">
-    <div class="cp-header">
-      <div class="section-title" style="margin-bottom:0">Cashflow Predictor</div>
-      <div class="cp-income-row">
-        <span class="cp-income-label">Monthly income</span>
-        <div class="cp-income-input-wrap">
-          <span>$</span>
-          <input id="cp-income" type="number" inputmode="decimal" step="1" min="0" placeholder="auto" />
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-row">
+        <h1 class="view-title" id="view-title">Overview</h1>
+        <button class="cmd-trigger" id="cmd-open" title="Search views, categories, merchants and actions">
+          <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
+        </button>
+        <div class="topbar-actions">
+          <label class="btn primary file-btn" title="Add more CSV exports; duplicates are skipped">
+            <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-plus"/></svg><span>Add CSVs</span>
+            <input type="file" id="add-input" accept=".csv,text/csv" multiple />
+          </label>
+          <button class="btn" id="open-settings" title="Settings"><span class="sync-dot" id="sync-dot"></span><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-cog"/></svg><span class="btn-label">Settings</span></button>
         </div>
-        <button id="cp-income-reset" title="Reset to actual average">↺</button>
       </div>
-    </div>
-    <div id="cp-period-note" class="cp-period-note"></div>
-    <div class="cp-content">
-      <div class="cp-list-col">
-        <div id="cp-list"></div>
-        <hr class="cp-divider" />
-        <div id="cp-summary"></div>
-      </div>
-      <div class="cp-chart-col">
-        <div class="cp-chart-wrap"><canvas id="cp-chart"></canvas></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card txn-section d1">
-    <div class="section-title">Transactions</div>
-    <div class="txn-search-bar">
-      <input id="txn-search" class="txn-search-input" type="search"
-             placeholder="Search description… (regex supported)" spellcheck="false" autocomplete="off" />
-      <div class="txn-amt-group">
-        <div class="txn-dir-pills">
-          <button class="txn-dir-pill active" data-dir="">All</button>
-          <button class="txn-dir-pill" data-dir="income">+</button>
-          <button class="txn-dir-pill" data-dir="expense">−</button>
+      <div class="filter-bar" id="filter-bar">
+        <span class="filter-label">Period</span>
+        <div class="seg">
+          <button class="preset-btn" data-days="30">1M</button>
+          <button class="preset-btn" data-days="90">3M</button>
+          <button class="preset-btn" data-days="180">6M</button>
+          <button class="preset-btn" data-days="ytd">YTD</button>
+          <button class="preset-btn" data-days="365">1Y</button>
+          <button class="preset-btn" data-days="0">ALL</button>
         </div>
-        <select id="txn-amt-op">
-          <option value="">any $</option>
-          <option value="lt">&lt;</option>
-          <option value="lte">≤</option>
-          <option value="eq">=</option>
-          <option value="gte">≥</option>
-          <option value="gt">&gt;</option>
-        </select>
-        <input id="txn-amt-val" type="number" inputmode="decimal" placeholder="0.00" min="0" step="0.01" />
+        <div class="date-inputs">
+          <input type="date" id="date-start" aria-label="Start date" />
+          <span class="date-sep">→</span>
+          <input type="date" id="date-end" aria-label="End date" />
+        </div>
+        <span class="filter-range-disp" id="range-disp"></span>
       </div>
+      <div class="demo-banner" id="demo-banner" hidden>
+        <span><b>Demo data.</b> Synthetic transactions, nothing is saved.</span>
+        <button class="link-btn" id="demo-exit">Exit demo</button>
+      </div>
+    </header>
+
+    <div class="views" id="views">
+
+      <!-- Overview -->
+      <section class="view" data-view="overview">
+        <div class="kpi-row" id="kpi-row"></div>
+        <div class="grid">
+          <div class="panel c8" id="balance-card">
+            <div class="panel-head"><span class="panel-title">Net worth</span><span class="panel-meta">Checking + savings − card balance</span></div>
+            <div class="panel-body"><div class="chart-box h260"><canvas id="balance-chart"></canvas></div></div>
+          </div>
+          <div class="panel c4" id="pace-card">
+            <div class="panel-head"><span class="panel-title">Spending pace</span><span class="panel-meta" id="pace-meta"></span></div>
+            <div class="panel-body">
+              <div class="pace-head" id="pace-head"></div>
+              <div class="chart-box h200"><canvas id="pace-chart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel c8">
+            <div class="panel-head"><span class="panel-title">Monthly cash flow</span><span class="panel-meta">Transfers excluded</span></div>
+            <div class="panel-body"><div class="chart-box h260"><canvas id="monthly-chart"></canvas></div></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Top categories</span><button class="panel-link" data-goto="spending">All spending →</button></div>
+            <div class="panel-body flush" id="ov-cats"></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Upcoming</span><button class="panel-link" data-goto="recurring">Recurring →</button></div>
+            <div class="panel-body flush" id="ov-upcoming"></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Signals</span><span class="panel-meta" id="ov-signals-meta"></span></div>
+            <div class="panel-body flush" id="ov-insights"></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Budget status</span><button class="panel-link" data-goto="budgets">Budgets →</button></div>
+            <div class="panel-body flush" id="ov-budgets"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cash flow -->
+      <section class="view" data-view="cashflow" hidden>
+        <div class="grid">
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Flow of funds</span><span class="panel-meta" id="sankey-meta"></span></div>
+            <div class="panel-body"><div id="sankey"></div></div>
+          </div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">By month</span><span class="panel-meta">Income, spending and what was kept</span></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="data" id="cf-table"></table></div></div>
+          </div>
+          <div class="panel c12" id="cashflow-predictor">
+            <div class="panel-head">
+              <span class="panel-title">Monthly plan</span>
+              <div class="cp-income-row">
+                <span class="filter-label">Monthly income</span>
+                <div class="input-affix"><span>$</span><input id="cp-income" type="number" inputmode="decimal" step="1" min="0" placeholder="auto" /></div>
+                <button class="btn small" id="cp-income-reset" title="Reset to actual average">Reset</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div id="cp-period-note" class="note"></div>
+              <div class="cp-meter" id="cp-meter"></div>
+              <div id="cp-list"></div>
+              <div id="cp-summary"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Spending -->
+      <section class="view" data-view="spending" hidden>
+        <div class="grid">
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title">Categories</span><span class="panel-meta" id="sp-cat-meta"></span></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="data" id="sp-cats"></table></div></div>
+          </div>
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">Category trend</span><span class="panel-meta">Monthly, stacked</span></div>
+            <div class="panel-body">
+              <div class="legend" id="trend-legend"></div>
+              <div class="chart-box h300"><canvas id="trend-chart"></canvas></div>
+            </div>
+          </div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Daily spending</span><span class="panel-meta" id="heat-meta"></span></div>
+            <div class="panel-body"><div id="heatmap"></div></div>
+          </div>
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title">Top merchants</span><span class="panel-meta">Tap to see transactions</span></div>
+            <div class="panel-body flush" id="merchant-list"></div>
+          </div>
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">By weekday</span><span class="panel-meta">Average per day</span></div>
+            <div class="panel-body" id="dow"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Budgets -->
+      <section class="view" data-view="budgets" hidden>
+        <div class="toolbar">
+          <span class="filter-label">Month</span>
+          <select id="bud-month" class="select"></select>
+          <span class="spacer"></span>
+          <button class="btn" id="bud-auto" title="Set every category to its recent monthly average">Auto-fill from averages</button>
+          <button class="btn" id="bud-clear">Clear all</button>
+        </div>
+        <div class="kpi-row" id="bud-kpis"></div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">Category budgets</span><span class="panel-meta">Monthly limits, saved with your settings</span></div>
+          <div class="panel-body flush" id="bud-list"></div>
+        </div>
+      </section>
+
+      <!-- Recurring -->
+      <section class="view" data-view="recurring" hidden>
+        <div class="kpi-row" id="rec-kpis"></div>
+        <div class="grid">
+          <div class="panel c8">
+            <div class="panel-head"><span class="panel-title">Recurring streams</span><span class="panel-meta">Detected from regular intervals · tap for history</span></div>
+            <div class="panel-body flush"><div class="table-wrap"><table class="data" id="streams-list"></table></div></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Next 30 days</span><span class="panel-meta" id="rec-upcoming-meta"></span></div>
+            <div class="panel-body flush" id="rec-upcoming"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Transactions -->
+      <section class="view" data-view="transactions" hidden>
+        <div class="panel txn-section">
+          <div class="panel-head">
+            <span class="panel-title">Ledger</span>
+            <span class="panel-meta" id="txn-count"></span>
+            <button class="btn small" id="txn-export"><svg viewBox="0 0 16 16" width="12" height="12"><use href="#i-download"/></svg> Export CSV</button>
+          </div>
+          <div class="txn-controls">
+            <div class="input-icon grow">
+              <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg>
+              <input id="txn-search" type="search" placeholder="Search description (regex supported)" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="seg" id="txn-dir">
+              <button class="txn-dir-pill active" data-dir="">All</button>
+              <button class="txn-dir-pill" data-dir="income">In</button>
+              <button class="txn-dir-pill" data-dir="expense">Out</button>
+            </div>
+            <select id="txn-cat-select" class="select" aria-label="Category"></select>
+            <div class="amt-filter">
+              <select id="txn-amt-op" class="select" aria-label="Amount comparison">
+                <option value="">any $</option>
+                <option value="lt">&lt;</option>
+                <option value="lte">≤</option>
+                <option value="eq">=</option>
+                <option value="gte">≥</option>
+                <option value="gt">&gt;</option>
+              </select>
+              <input id="txn-amt-val" type="number" inputmode="decimal" placeholder="0.00" min="0" step="0.01" aria-label="Amount" />
+            </div>
+            <label class="check"><input type="checkbox" id="show-xfr" /> Transfers</label>
+            <button class="btn small" id="txn-reset" hidden>Clear filters</button>
+          </div>
+          <div class="table-wrap txn-table-wrap">
+            <table class="data txn-table">
+              <thead>
+                <tr>
+                  <th data-sort="date">Date</th>
+                  <th data-sort="description">Description</th>
+                  <th data-sort="category" class="col-cat">Category</th>
+                  <th data-sort="account" class="col-acct">Account</th>
+                  <th data-sort="amount" class="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody id="txn-tbody"></tbody>
+            </table>
+          </div>
+          <div id="txn-more" class="more-row" hidden></div>
+        </div>
+      </section>
     </div>
-    <div class="txn-top">
-      <div class="cat-filters" id="cat-filters"></div>
-      <label class="show-transfers-wrap"><input type="checkbox" id="show-xfr" /> Show transfers</label>
-    </div>
-    <div class="txn-table-wrap">
-      <table>
-        <thead>
-          <tr><th>Date</th><th>Description</th><th>Category</th><th>Account</th><th style="text-align:right">Amount</th></tr>
-        </thead>
-        <tbody id="txn-tbody"></tbody>
-      </table>
-    </div>
-    <div id="txn-more" class="streams-pagination" hidden></div>
-  </div>
+
+    <footer class="statusbar" id="statusbar"></footer>
+  </main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span></button>
+    <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Flow</span></button>
+    <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span></button>
+    <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
+    <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
+    <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Ledger</span></button>
+  </nav>
+</div>
+
+<!-- ── Transaction detail ── -->
+<div class="overlay side" id="drawer-overlay">
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Transaction detail">
+    <div class="sheet-head"><h2>Transaction</h2><button class="icon-btn" id="drawer-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
+    <div id="drawer-body"></div>
+  </aside>
 </div>
 
 <!-- ── Stream timeline modal ── -->
-<div id="stream-overlay">
-  <div id="stream-modal">
-    <div id="stream-modal-header">
+<div class="overlay" id="stream-overlay">
+  <div class="sheet" id="stream-modal" role="dialog" aria-modal="true" aria-labelledby="stream-modal-title">
+    <div class="sheet-head">
       <div>
-        <div id="stream-modal-title"></div>
-        <div id="stream-modal-meta"></div>
+        <h2 id="stream-modal-title"></h2>
+        <div class="sheet-sub" id="stream-modal-meta"></div>
       </div>
-      <button id="stream-modal-close" aria-label="Close">✕</button>
+      <button class="icon-btn" id="stream-modal-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
     </div>
-    <div id="stream-chart-wrap"><canvas id="stream-chart"></canvas></div>
-    <div id="stream-timeline"></div>
-    <div id="stream-modal-footer">
+    <div class="sheet-body">
+      <div class="chart-box h200"><canvas id="stream-chart"></canvas></div>
+      <div id="stream-timeline"></div>
+    </div>
+    <div class="sheet-foot">
       <span id="stream-total-label">Total</span>
-      <span id="stream-total-val"></span>
+      <span id="stream-total-val" class="mono"></span>
     </div>
+  </div>
+</div>
+
+<!-- ── Command palette ── -->
+<div class="overlay top" id="cmd-overlay">
+  <div class="cmd" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="input-icon">
+      <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg>
+      <input id="cmd-input" type="text" placeholder="Jump to a view, category, merchant or action" autocomplete="off" spellcheck="false" />
+    </div>
+    <div id="cmd-list" role="listbox"></div>
+    <div class="cmd-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> select</span><span><kbd>esc</kbd> close</span></div>
   </div>
 </div>
 
@@ -233,13 +370,13 @@
   <input id="cat-picker-search" type="text" placeholder="Filter categories…" autocomplete="off" spellcheck="false" />
   <div id="cat-picker-opts"></div>
   <div id="cat-picker-matchby">
-    <div id="cat-picker-matchby-title">Apply to…</div>
+    <div class="picker-section">Apply to…</div>
     <button id="cat-pick-by-merchant" class="matchby-btn"></button>
     <button id="cat-pick-by-amount" class="matchby-btn highlight"></button>
-    <button id="cat-pick-matchby-back">← back</button>
+    <button id="cat-pick-matchby-back" class="picker-back">← back</button>
   </div>
   <div id="cat-pick-tolerance-panel">
-    <div class="cat-picker-section-title" style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);padding:0.25rem 0.5rem 0.4rem;border-bottom:1px solid var(--border)">Set tolerance</div>
+    <div class="picker-section">Set tolerance</div>
     <div class="tol-row">
       <span>±</span>
       <input id="cat-pick-tol-pct" type="number" inputmode="decimal" min="0" max="50" step="1" value="0" />
@@ -247,17 +384,18 @@
     </div>
     <div id="cat-pick-tol-range"></div>
     <button id="cat-pick-tol-confirm" class="matchby-btn highlight">Save rule</button>
-    <button id="cat-pick-matchby-back2">← back</button>
+    <button id="cat-pick-matchby-back2" class="picker-back">← back</button>
   </div>
 </div>
 
 <!-- ── Settings ── -->
-<div id="settings-overlay">
-  <div id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title">
-    <div class="set-head">
+<div class="overlay" id="settings-overlay">
+  <div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <div class="sheet-head">
       <h2 id="set-title">Settings</h2>
-      <button class="set-close" id="close-settings" aria-label="Close">✕</button>
+      <button class="icon-btn" id="close-settings" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
     </div>
+    <div class="sheet-body">
 
     <div class="set-sec">
       <h3>Sync between devices</h3>
@@ -268,32 +406,32 @@
       <div id="sync-setup">
         <div class="set-row"><input class="set-input" id="sync-token" type="password" placeholder="GitHub token (ghp_… or github_pat_…)" autocomplete="off" /></div>
         <div class="set-row"><input class="set-input" id="sync-pass" type="password" placeholder="Encryption passphrase" autocomplete="new-password" /></div>
-        <div class="set-row"><button class="set-btn primary" id="sync-connect">Connect</button><span class="set-status" id="sync-setup-status"></span></div>
+        <div class="set-row"><button class="btn primary" id="sync-connect">Connect</button><span class="set-status" id="sync-setup-status"></span></div>
       </div>
       <div id="sync-on" hidden>
         <div class="set-row"><span class="set-status" id="sync-status"></span></div>
         <div class="set-row">
-          <button class="set-btn" id="sync-now">Sync now</button>
-          <button class="set-btn" id="sync-off">Disconnect this device</button>
+          <button class="btn" id="sync-now">Sync now</button>
+          <button class="btn" id="sync-off">Disconnect this device</button>
         </div>
       </div>
     </div>
 
     <div class="set-sec">
       <h3>Credit card starting balance</h3>
-      <p>The balance on the card at the start of your oldest credit card export. Fixes the "CC outstanding" line on the assets chart.</p>
+      <p>The balance on the card at the start of your oldest credit card export. Fixes the card balance line on the net worth chart.</p>
       <div class="set-row">
         <input class="set-input" id="cc-start" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 1987.39" />
-        <button class="set-btn" id="cc-save">Save</button>
+        <button class="btn" id="cc-save">Save</button>
       </div>
     </div>
 
     <div class="set-sec">
-      <h3>Category rules <span id="rule-count" style="color:var(--dim)"></span></h3>
+      <h3>Category rules <span id="rule-count" class="dim"></span></h3>
       <p>Created when you recategorize a transaction. Tap ✕ to remove one.</p>
       <div class="rule-list" id="rule-list"></div>
-      <div class="set-row" style="margin-top:.6rem">
-        <label class="set-btn">Import custom_rules.json / training_data.json
+      <div class="set-row">
+        <label class="btn file-btn">Import custom_rules.json / training_data.json
           <input type="file" id="import-rules" accept=".json,application/json" multiple />
         </label>
       </div>
@@ -303,40 +441,44 @@
       <h3>Backup</h3>
       <p>A plain (unencrypted) file with every transaction and rule, for safekeeping or moving to a new device without sync.</p>
       <div class="set-row">
-        <button class="set-btn" id="export-backup">Download backup</button>
-        <label class="set-btn">Restore backup<input type="file" id="import-backup" accept=".json,application/json" /></label>
+        <button class="btn" id="export-backup">Download backup</button>
+        <label class="btn file-btn">Restore backup<input type="file" id="import-backup" accept=".json,application/json" /></label>
       </div>
     </div>
 
     <div class="set-sec">
       <h3>Data on this device</h3>
       <p id="data-summary"></p>
-      <div class="set-row"><button class="set-btn danger" id="clear-all">Delete all data</button></div>
+      <div class="set-row"><button class="btn danger" id="clear-all">Delete all data</button></div>
     </div>
 
     <div class="set-sec">
       <h3>App version</h3>
-      <p id="app-version" style="margin:0"></p>
-      <div class="set-row" style="margin-top:.5rem"><button class="set-btn" id="check-update">Check for updates</button></div>
+      <p id="app-version"></p>
+      <div class="set-row"><button class="btn" id="check-update">Check for updates</button></div>
+    </div>
     </div>
   </div>
 </div>
 
 <!-- ── Install (opened by the README's link, which ends in #install) ── -->
-<div id="install-overlay">
-  <div id="install-sheet" role="dialog" aria-modal="true" aria-labelledby="install-title">
-    <div class="set-head">
+<div class="overlay" id="install-overlay">
+  <div class="sheet narrow" id="install-sheet" role="dialog" aria-modal="true" aria-labelledby="install-title">
+    <div class="sheet-head">
       <h2 id="install-title">Install FinanceTracker</h2>
-      <button class="set-close" id="close-install" aria-label="Close">✕</button>
+      <button class="icon-btn" id="close-install" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
     </div>
-    <div class="install-hero">
-      <img src="icons/icon-192.png" alt="" width="64" height="64" />
-      <p>Opens like any other app, works offline, and keeps your data on this device.</p>
+    <div class="sheet-body">
+      <div class="install-hero">
+        <img src="icons/icon-192.png" alt="" width="56" height="56" />
+        <p>Opens like any other app, works offline, and keeps your data on this device.</p>
+      </div>
+      <div id="install-body"></div>
     </div>
-    <div id="install-body"></div>
   </div>
 </div>
 
+<div id="tip" role="tooltip"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script type="module" src="js/app.js"></script>
