@@ -338,4 +338,99 @@ await assert.rejects(P.call({ url: 'https://relay.example', key: 'wrong' }, 'syn
 }
 globalThis.fetch = realFetch;
 
+// ── The Android app: the same calls made by the device, keys in the Keystore ──
+// A stand-in for the native wrapper. Nothing may go through fetch here: in the
+// app that is exactly the request a web view refuses.
+{
+  const N = await import('../js/native.js');
+  const store = await import('../js/storage.js');
+  assert.equal(N.isNative(), false, 'a browser or Node is not the Android app');
+  const sent = [], vault = new Map(), idb = new Map();
+  let linkAnswer = { publicToken: 'public-native', institution: 'Capital One' }, httpDown = false;
+  globalThis.Capacitor = {
+    isNativePlatform: () => true,
+    async nativePromise(plugin, method, o) {
+      if (plugin === 'CapacitorHttp') {
+        if (httpDown) throw { message: 'Unable to resolve host' };
+        sent.push({ url: o.url, body: o.data, headers: o.headers, method: o.method });
+        if (o.url.endsWith('/link/token/create')) return { status: 200, data: { link_token: 'link-native' } };
+        if (o.url.endsWith('/item/public_token/exchange')) return { status: 200, data: JSON.stringify({ access_token: 'access-native', item_id: 'item-n' }) };
+        return { status: 400, data: { error_code: 'INVALID_API_KEYS', error_message: 'invalid client_id or secret provided' } };
+      }
+      if (plugin === 'SecureStore') {
+        if (method === 'set') { vault.set(o.key, o.value); return undefined; }
+        if (method === 'get') return { value: vault.has(o.key) ? vault.get(o.key) : null };
+        if (method === 'remove') { vault.delete(o.key); return undefined; }
+      }
+      if (plugin === 'PlaidLink' && method === 'packageName') return { packageName: 'io.github.jsandhagen.financetracker' };
+      if (plugin === 'PlaidLink' && method === 'open') { assert.equal(o.token, 'link-native'); return linkAnswer; }
+      throw { message: `no ${plugin}.${method}` };
+    },
+  };
+  globalThis.fetch = async () => { throw new Error('the Android app must not use fetch for Plaid'); };
+  assert.equal(N.isNative(), true);
+
+  const conn = { mode: 'direct', clientId: 'cid', secret: 'sec', env: 'production' };
+  const pkg = await N.packageName();
+  assert.deepEqual(await P.call(conn, 'link-token', { android_package_name: pkg, redirect_uri: 'https://ignored.example/' }), { link_token: 'link-native' });
+  assert.equal(sent[0].url, 'https://production.plaid.com/link/token/create');
+  assert.equal(sent[0].method, 'POST');
+  assert.equal(sent[0].body.android_package_name, 'io.github.jsandhagen.financetracker');
+  assert.ok(!('redirect_uri' in sent[0].body), 'Plaid refuses a token with both a package name and a return address');
+  assert.equal(sent[0].body.secret, 'sec');
+  // Repairing a connection also has to name the app.
+  await P.call(conn, 'link-token', { item: 'access-native', android_package_name: pkg });
+  assert.ok(sent[1].body.access_token === 'access-native' && sent[1].body.android_package_name === pkg && !sent[1].body.products);
+  // An answer that arrives as text is still read.
+  assert.deepEqual(await P.call(conn, 'exchange', { public_token: 'p' }), { item: 'access-native', item_id: 'item-n' });
+  await assert.rejects(P.call(conn, 'sync', { item: 'x' }), e => e.code === 'INVALID_API_KEYS' && /invalid client_id/.test(e.message));
+  httpDown = true;
+  await assert.rejects(P.call(conn, 'link-token', {}), e => e.code === 'OFFLINE' && !/relay/.test(e.message));
+  httpDown = false;
+
+  // Link goes through the SDK, not the web script.
+  assert.deepEqual(await P.openLink('link-native'), { public_token: 'public-native', institution: 'Capital One' });
+  linkAnswer = { exited: true };
+  assert.equal(await P.openLink('link-native'), null, 'closing Link is not an error');
+  linkAnswer = { exited: true, errorCode: 'INVALID_LINK_TOKEN', errorMessage: 'The link token is not valid.' };
+  await assert.rejects(P.openLink('link-native'), e => e.code === 'INVALID_LINK_TOKEN');
+
+  // The keys go to the Keystore and never rest in IndexedDB.
+  const reqOf = fn => { const r = {}; queueMicrotask(() => { fn(r); }); return r; };
+  globalThis.indexedDB = {
+    open() {
+      const db = { transaction() {
+        const t = {};
+        t.objectStore = () => ({
+          get: k => ({ result: idb.get(k) }),
+          put: (v, k) => { idb.set(k, v); return {}; },
+          delete: k => { idb.delete(k); return {}; },
+        });
+        queueMicrotask(() => t.oncomplete());
+        return t;
+      } };
+      return reqOf(r => { r.result = db; r.onsuccess(); });
+    },
+  };
+  idb.set('plaid', conn); // left by a build from before the Keystore
+  assert.deepEqual(await store.getPlaid(), conn, 'old keys are carried over');
+  assert.ok(!idb.has('plaid') && vault.has('plaid'), 'and moved out of IndexedDB');
+  await store.setPlaid({ ...conn, env: 'sandbox' });
+  assert.ok(!idb.has('plaid'));
+  assert.equal((await store.getPlaid()).env, 'sandbox');
+  assert.equal((await store.loadAll()).plaid.secret, 'sec', 'the app reads its keys from the Keystore on start');
+  await store.delPlaid();
+  assert.equal(await store.getPlaid(), null);
+  assert.equal(vault.size, 0);
+
+  // A browser keeps using IndexedDB.
+  delete globalThis.Capacitor;
+  await store.setPlaid(conn);
+  assert.deepEqual(idb.get('plaid'), conn);
+  assert.deepEqual(await store.getPlaid(), conn);
+  await store.delPlaid();
+  delete globalThis.indexedDB;
+}
+globalThis.fetch = realFetch;
+
 console.log('plaid tests passed');

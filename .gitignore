@@ -4,3 +4,9 @@ __pycache__/
 custom_rules.json
 training_data.json
 .DS_Store
+
+# Android wrapper
+node_modules/
+www/
+*.jks
+*.keystore
