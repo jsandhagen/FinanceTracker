@@ -10,7 +10,7 @@ const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/app.css',
   './js/app.js', './js/analyzer.js', './js/categorizer.js', './js/csv.js',
-  './js/storage.js', './js/sync.js', './js/version.js', './js/insights.js', './js/demo.js',
+  './js/storage.js', './js/sync.js', './js/version.js', './js/insights.js', './js/demo.js', './js/watch.js',
   './vendor/chart.umd.min.js', './vendor/fonts/jetbrains-mono.woff2',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
@@ -29,8 +29,28 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
+// Files shared to the installed app (Android: Share > FinanceTracker) arrive as
+// a form post. They wait in a small cache until the page opens and reads them.
+const INBOX = 'ft-inbox';
+async function receiveShare(request) {
+  try {
+    const form = await request.formData();
+    const files = [];
+    for (const f of form.getAll('files')) if (f && f.text) files.push({ name: f.name, text: await f.text() });
+    if (files.length) {
+      const cache = await caches.open(INBOX);
+      await cache.put(`./__inbox/${Date.now()}`, new Response(JSON.stringify(files), { headers: { 'Content-Type': 'application/json' } }));
+    }
+  } catch {}
+  return Response.redirect('./', 303);
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  if (e.request.method === 'POST' && url.origin === location.origin && url.pathname.endsWith('/share-target')) {
+    e.respondWith(receiveShare(e.request));
+    return;
+  }
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // GitHub API goes straight out
   e.respondWith(
     // 'no-cache' revalidates with the server (a cheap 304 when nothing changed),

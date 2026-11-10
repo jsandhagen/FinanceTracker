@@ -2,6 +2,7 @@ import * as store from './storage.js';
 import * as A from './analyzer.js';
 import * as I from './insights.js';
 import * as sync from './sync.js';
+import * as watch from './watch.js';
 import { demoFiles } from './demo.js';
 import { BUILD } from './version.js';
 
@@ -25,6 +26,11 @@ const isoLocal = ms => { const d = new Date(ms); return `${d.getFullYear()}-${St
 const isPhone = () => matchMedia('(max-width: 640px)').matches;
 const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const shortDate = ms => new Date(ms).toLocaleString('en-US', { month: 'short', day: '2-digit' });
+// Calendar arithmetic. Adding 24-hour blocks drifts an hour across a daylight
+// saving change, which is enough to drop or add a day at the edge of a period.
+const addDays = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };
+const dayStart = ms => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+const dayEnd = ms => addDays(dayStart(ms), 1) - 1;
 const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 let toastTimer;
@@ -64,7 +70,8 @@ let ALL_TXN = [];     // derived: categorized, newest first
 let STREAMS = [];
 let SCHED = [];       // STREAMS with their next expected date
 let BALANCE = [];
-let DATA_MIN = 0, DATA_MAX = 0;
+let DATA_MIN = 0, DATA_MAX = 0;   // first moment of the first day, last moment of the last
+let DATA_LAST = 0;                // first moment of the last day
 let CAT_SLOT = {};    // category -> series colour, fixed by all-time rank
 let CTX = null;       // everything the views draw, for the selected period
 
@@ -235,9 +242,10 @@ function rebuild(keepRange) {
 
   const tss = ALL_TXN.map(t => t.ts);
   DATA_MIN = Math.min(...tss);
-  DATA_MAX = Math.max(...tss) + DAY - 1;
+  DATA_LAST = Math.max(...tss);
+  DATA_MAX = dayEnd(DATA_LAST);
   for (const id of ['date-start', 'date-end']) { $(id).min = isoLocal(DATA_MIN); $(id).max = isoLocal(DATA_MAX); }
-  SCHED = STREAMS.map((s, idx) => ({ s, idx, ...I.schedule(s, DATA_MAX - DAY + 1) }));
+  SCHED = STREAMS.map((s, idx) => ({ s, idx, ...I.schedule(s, DATA_LAST) }));
 
   const allOps = ALL_TXN.filter(t => !t.is_transfer);
   CAT_SLOT = {};
@@ -275,7 +283,7 @@ function recompute(startMs, endMs) {
   const txns = inRange(startMs, endMs);
   const ops = txns.filter(t => !t.is_transfer);
   const len = endMs - startMs + 1;
-  const ps = startMs - len, pe = startMs - 1;
+  const ps = addDays(startMs, -Math.max(1, Math.round(len / DAY))), pe = startMs - 1;
   const hasPrior = ps >= DATA_MIN - 3 * DAY;
   const priorTxns = hasPrior ? inRange(ps, pe) : [];
   CTX = {
@@ -411,7 +419,7 @@ function renderOverview(c) {
   const soon = upcoming();
   $('ov-upcoming').innerHTML = soon.length ? soon.slice(0, 6).map(upcomingRow).join('') : empty('No recurring charges expected in the next 30 days.');
 
-  const sig = I.signals({ ops: c.ops, priorOps: c.priorOps, hasPrior, streams: STREAMS, asOf: DATA_MAX - DAY + 1, money: money0 });
+  const sig = I.signals({ ops: c.ops, priorOps: c.priorOps, hasPrior, streams: STREAMS, asOf: DATA_LAST, money: money0 });
   $('ov-signals-meta').textContent = `${sig.length} for this period`;
   $('ov-insights').innerHTML = sig.length ? sig.slice(0, 6).map(s => {
     const nav = s.cat ? `data-txn-cat="${esc(s.cat)}"` : s.search ? `data-txn-search="${esc(s.search)}"` : '';
@@ -444,11 +452,11 @@ function barRows(items, total, extra = () => ({})) {
 }
 
 function upcoming() {
-  const asOf = DATA_MAX - DAY + 1;
+  const asOf = DATA_LAST;
   return SCHED.filter(x => x.active && x.next <= asOf + 30 * DAY).sort((a, b) => a.next - b.next);
 }
 function upcomingRow(x) {
-  const asOf = DATA_MAX - DAY + 1, inDays = Math.round((x.next - asOf) / DAY), inc = x.s.direction === 'income';
+  const asOf = DATA_LAST, inDays = Math.round((x.next - asOf) / DAY), inc = x.s.direction === 'income';
   return `<div class="up-row link" data-stream="${x.idx}">
     <span class="up-date">${shortDate(x.next)}</span>
     <span class="up-name">${esc(x.s.merchant)}<small>${x.s.frequency} · ${inDays <= 0 ? 'due now' : `in ${inDays}d`}</small></span>
@@ -625,13 +633,14 @@ function renderSpending(c) {
 
   // Stacked by month. The six largest categories of all time keep their colour
   // whatever the period; the rest fold into one grey band.
-  const yms = [...new Set(c.ops.filter(t => t.amount < 0).map(t => t.date_iso.slice(0, 7)))].sort();
+  const yms = [...new Set(c.ops.filter(t => I.spent(t)).map(t => t.date_iso.slice(0, 7)))].sort();
   const named = Object.keys(CAT_SLOT);
   const grid = Object.fromEntries([...named, 'Other categories'].map(k => [k, yms.map(() => 0)]));
   for (const t of c.ops) {
-    if (t.amount >= 0) continue;
-    grid[CAT_SLOT[t.category] ? t.category : 'Other categories'][yms.indexOf(t.date_iso.slice(0, 7))] -= t.amount;
+    const v = I.spent(t);
+    if (v) grid[CAT_SLOT[t.category] ? t.category : 'Other categories'][yms.indexOf(t.date_iso.slice(0, 7))] += v;
   }
+  for (const v of Object.values(grid)) v.forEach((x, i) => { if (x < 0) v[i] = 0; }); // a month refunded below zero
   const series = Object.entries(grid).filter(([, v]) => v.some(x => x > 0));
   $('trend-legend').innerHTML = series.map(([k]) => `<span><i style="background:${CAT_SLOT[k] || C.other}"></i>${esc(k)}</span>`).join('');
   chart('trend-chart', {
@@ -657,8 +666,8 @@ function renderSpending(c) {
   // the period holds.
   const sums = new Array(7).fill(0), counts = new Array(7).fill(0);
   for (let t = A.localTs(isoLocal(c.s)); t <= c.e; t += DAY) counts[new Date(t + DAY / 2).getDay()]++;
-  for (const t of c.ops) if (t.amount < 0) sums[new Date(t.ts).getDay()] -= t.amount;
-  const avgs = sums.map((v, i) => (counts[i] ? v / counts[i] : 0)), top = Math.max(...avgs, 1);
+  for (const t of c.ops) sums[new Date(t.ts).getDay()] += I.spent(t);
+  const avgs = sums.map((v, i) => (counts[i] ? Math.max(0, v) / counts[i] : 0)), top = Math.max(...avgs, 1);
   $('dow').innerHTML = `<div class="dow">${[1, 2, 3, 4, 5, 6, 0].map(i => `
     <div class="dow-col" data-tip="${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}|${money(avgs[i])} on average">
       <span class="dow-val">${moneyK(avgs[i])}</span>
@@ -674,8 +683,8 @@ function renderHeatmap(c) {
   const el = $('heatmap');
   const daily = I.dailySpend(c.allOps);
   const end = A.localTs(isoLocal(Math.min(c.e, DATA_MAX)));
-  const from = Math.max(A.localTs(isoLocal(c.s)), end - 370 * DAY);  // first day of the period shown
-  const start = Math.max(A.localTs(isoLocal(DATA_MIN)), Math.min(from, end - 26 * 7 * DAY));
+  const from = Math.max(A.localTs(isoLocal(c.s)), addDays(end, -370));  // first day of the period shown
+  const start = Math.max(A.localTs(isoLocal(DATA_MIN)), Math.min(from, addDays(end, -182)));
   for (const k of [...daily.keys()]) { const ts = A.localTs(k); if (ts < start || ts > end) daily.delete(k); }
   const vals = [...daily.values()].filter(v => v > 0).sort((a, b) => a - b);
   if (!vals.length) { el.innerHTML = empty('No spending in this period.'); $('heat-meta').textContent = ''; return; }
@@ -979,6 +988,7 @@ function openDrawer(t) {
       <dt>Statement text</dt><dd class="mono wrap">${esc(t.description)}</dd>
       ${t.balance != null ? `<dt>Balance after</dt><dd class="mono">${money(t.balance)}</dd>` : ''}
       ${t.is_transfer ? '<dt>Counted</dt><dd>Transfer between your own accounts, left out of income and spending.</dd>' : ''}
+      ${t.refund ? `<dt>Counted</dt><dd>Refund: taken off ${esc(t.category)} spending, not counted as income.</dd>` : ''}
     </dl>
     <div class="dr-section">
       <div class="dr-section-head"><span>${esc(t.merchant)} · all time</span><span class="mono">${same.length}× · ${signed(total)}</span></div>
@@ -1000,7 +1010,7 @@ $('txn-tbody').addEventListener('click', ev => {
 function presetRange(key) {
   if (key === 'ytd') return [Math.max(DATA_MIN, new Date(new Date(DATA_MAX).getFullYear(), 0, 1).getTime()), DATA_MAX];
   const days = parseInt(key, 10);
-  return [days === 0 ? DATA_MIN : Math.max(DATA_MIN, DATA_MAX - days * DAY + 1), DATA_MAX];
+  return [days === 0 ? DATA_MIN : Math.max(DATA_MIN, addDays(DATA_LAST, 1 - days)), DATA_MAX];
 }
 function setDateInputs(startMs, endMs) {
   $('date-start').value = isoLocal(startMs);
@@ -1013,7 +1023,7 @@ function updateRangeDisp(startMs, endMs) {
 function getInputMs() {
   const sv = $('date-start').value, ev = $('date-end').value;
   if (!sv || !ev) return [NaN, NaN];
-  return [A.localTs(sv), A.localTs(ev) + DAY - 1];
+  return [A.localTs(sv), dayEnd(A.localTs(ev))];
 }
 function applyPreset(key) {
   rangePreset = key;
@@ -1041,7 +1051,9 @@ setInterval(() => { const el = $('clock'); if (el && !document.hidden) el.textCo
 function renderStatus() {
   if (!ALL_TXN.length) return;
   const accts = new Set(ALL_TXN.map(t => t.account)).size;
-  $('asof').textContent = `Data as of ${shortDate(DATA_MAX)}`;
+  const age = dataAge(DATA_LAST);
+  $('asof').textContent = `Data as of ${shortDate(DATA_LAST)}` + (age >= 4 && !demo ? ` · ${age}d old` : '');
+  $('asof').className = 'asof' + (demo ? '' : age >= 21 ? ' old' : age >= 7 ? ' stale' : '');
   const syncCls = $('sync-dot').className.replace('sync-dot', '').trim();
   const syncTxt = demo ? 'DEMO' : !state.sync ? 'SYNC OFF' : syncCls === 'err' ? 'SYNC FAILED' : syncCls === 'busy' ? 'SYNCING' : 'SYNC ON';
   $('statusbar').innerHTML = `
@@ -1066,7 +1078,8 @@ function openCmd() {
     ...Object.entries(VIEWS).map(([k, label]) => ({ kind: 'View', label, run: () => setView(k) })),
     ...[['30', 'Last month'], ['90', 'Last 3 months'], ['180', 'Last 6 months'], ['ytd', 'Year to date'], ['365', 'Last year'], ['0', 'All time']]
       .map(([k, label]) => ({ kind: 'Period', label, run: () => applyPreset(k) })),
-    { kind: 'Action', label: 'Add CSV files', run: () => $('add-input').click() },
+    { kind: 'Action', label: 'Refresh data (add CSV files)', run: openRefresh },
+    ...(watch.current() ? [{ kind: 'Action', label: `Check ${watch.current().name} for new exports`, run: () => watchScan({ ask: true, loud: true }) }] : []),
     { kind: 'Action', label: 'Export visible transactions as CSV', run: () => { setView('transactions'); $('txn-export').click(); } },
     { kind: 'Action', label: 'Download backup', run: () => $('export-backup').click() },
     { kind: 'Action', label: 'Open settings', run: openSettings },
@@ -1264,42 +1277,64 @@ document.addEventListener('click', ev => {
 });
 
 // ── Importing CSVs ───────────────────────────────────────────────────────────
-async function importFiles(fileList) {
-  const files = [...fileList].filter(f => /\.csv$/i.test(f.name) || f.type === 'text/csv');
-  if (!files.length) { toast('Choose one or more .csv files.', true); return; }
+// Whatever route the files took (picker, drop, watched folder, share sheet,
+// "open with"), they end up here as [{ name, text }].
+async function ingest(items, { auto = false } = {}) {
+  const wasDemo = demo;
   if (demo) { demo = false; state = await store.loadAll(); rangePreset = null; } // real files replace the demo
-  const unknown = [];
-  let incoming = [];
-  for (const f of files) {
+  const unknown = [], perAcct = new Map();
+  let merged = state.transactions, added = 0, skipped = 0;
+  for (const f of items) {
     try {
-      const { format, transactions } = A.parseFile(await f.text());
-      if (format === 'unknown' || !transactions.length) unknown.push(f.name);
-      else incoming = incoming.concat(transactions);
+      // Each file is merged before the next is read, so the next one knows
+      // which account numbers are savings.
+      const { format, transactions } = A.parseFile(f.text, { known: A.knownAccounts(merged), name: f.name });
+      if (format === 'unknown' || !transactions.length) { unknown.push(f.name); continue; }
+      const have = new Set(merged.map(t => t.id));
+      for (const t of transactions) if (!have.has(t.id)) perAcct.set(t.account, (perAcct.get(t.account) || 0) + 1);
+      const r = A.mergeTransactions(merged, transactions);
+      merged = r.merged; added += r.added; skipped += r.skipped;
     } catch (e) {
       unknown.push(f.name);
     }
   }
-  if (!incoming.length) {
-    toast(`No recognisable transactions in ${unknown.join(', ')}. Expected a Capital One checking, savings or credit card export.`, true);
-    return;
+  if (!added && !skipped) {
+    if (wasDemo) showView();
+    if (!auto) toast(`No recognisable transactions in ${unknown.join(', ')}. Expected a Capital One checking, savings or credit card export.`, true);
+    return 0;
   }
-  const { merged, added, skipped } = A.mergeTransactions(state.transactions, incoming);
-  state.transactions = merged;
-  await commit();
-  store.requestPersistence();
-  showView();
-  let msg = `Added ${added.toLocaleString()} new transaction${added === 1 ? '' : 's'}`;
-  if (skipped) msg += `, skipped ${skipped.toLocaleString()} already saved`;
+  if (added) {
+    state.transactions = A.repairStored(merged);
+    await commit();
+    store.requestPersistence();
+    showView();
+  } else if (wasDemo) showView();
+  if ($('refresh-overlay').classList.contains('open')) renderRefresh();
+  if (auto && !added) return 0;
+  const detail = [...perAcct].map(([a, n]) => `${a.replace(' ...', ' ')} +${n.toLocaleString()}`).join(', ');
+  let msg = added
+    ? `${auto ? 'Imported' : 'Added'} ${added.toLocaleString()} new transaction${added === 1 ? '' : 's'}${perAcct.size > 1 ? ` (${detail})` : perAcct.size ? ` to ${[...perAcct.keys()][0]}` : ''}`
+    : 'Nothing new: every transaction in those files is already saved';
+  if (added && skipped) msg += `, skipped ${skipped.toLocaleString()} already saved`;
   if (unknown.length) msg += `. Not recognised: ${unknown.join(', ')}`;
   toast(msg + '.', unknown.length > 0);
+  return added;
+}
+
+async function importFiles(fileList) {
+  const files = [...fileList].filter(f => /\.csv$/i.test(f.name) || /csv|comma-separated/.test(f.type));
+  if (!files.length) { toast('Choose one or more .csv files.', true); return; }
+  await ingest(await Promise.all(files.map(async f => ({ name: f.name, text: await f.text() }))));
 }
 
 const dropZone = $('drop-zone');
 $('file-input').addEventListener('change', e => { importFiles(e.target.files); e.target.value = ''; });
 $('add-input').addEventListener('change', e => { importFiles(e.target.files); e.target.value = ''; });
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); importFiles(e.dataTransfer.files); });
+for (const z of [dropZone, $('rf-drop')]) {
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('drag-over'); });
+  z.addEventListener('dragleave', () => z.classList.remove('drag-over'));
+  z.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); z.classList.remove('drag-over'); importFiles(e.dataTransfer.files); });
+}
 // The dashboard accepts a drop anywhere too.
 document.addEventListener('dragover', e => { if (!$('dashboard').hidden) e.preventDefault(); });
 document.addEventListener('drop', e => {
@@ -1307,6 +1342,188 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   importFiles(e.dataTransfer.files);
 });
+
+// ── Refresh sheet ────────────────────────────────────────────────────────────
+// How far behind each account is, where to get the next export, and the
+// watched folder that makes the second half of that automatic.
+const refreshOverlay = $('refresh-overlay');
+const dataAge = ts => Math.max(0, Math.round((dayStart(Date.now()) - ts) / DAY));
+
+function renderRefresh() {
+  const last = new Map();
+  if (!demo) for (const t of state.transactions) if (!(last.get(t.account) >= t.date)) last.set(t.account, t.date);
+  $('rf-accounts-sec').hidden = !last.size;
+  let oldest = null;
+  $('rf-accounts').innerHTML = [...last].sort((a, b) => a[0].localeCompare(b[0])).map(([acct, iso]) => {
+    const ts = A.localTs(iso), age = dataAge(ts), from = addDays(ts, -3);
+    if (oldest == null || from < oldest) oldest = from;
+    const url = acctLink(acct);
+    const action = linkEdit === acct
+      ? `<form class="rf-link-form" data-acct="${esc(acct)}"><input class="set-input" type="text" inputmode="url" placeholder="Paste this account's page address from Capital One" value="${esc(url || '')}" aria-label="Capital One page for ${esc(acct)}" /><button class="btn small primary">Save</button><button type="button" class="btn small" data-link-cancel>Cancel</button></form>`
+      : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
+      : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
+    return `<div class="rf-acct"><span>${esc(acct)}</span>
+      <span>through ${shortDate(ts)}<small>export from ${shortDate(from)} or earlier</small></span>
+      <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span>${action}</div>`;
+  }).join('');
+  const linked = [...last.keys()].filter(acctLink);
+  $('rf-open-all').hidden = linked.length < 2;
+  $('rf-open-all').textContent = `Open all ${linked.length} ↗`;
+  $('rf-open-home').classList.toggle('primary', !linked.length);
+  $('rf-link-note').hidden = !last.size || linked.length === last.size;
+  $('rf-hint').textContent = oldest != null ? `One range covers everything: ${shortDate(oldest)} to today.` : 'For a first import, pick the longest range offered.';
+  renderWatch();
+}
+
+// A saved shortcut to each account's own page on Capital One. Only you can
+// supply it: the address holds an id that is different for every customer.
+// It lives in settings, so it syncs. Anything that is not a Capital One https
+// address is refused, here and again when it is read back.
+let linkEdit = null;
+function cleanLink(raw) {
+  try {
+    const u = new URL(String(raw).trim());
+    return u.protocol === 'https:' && /(^|\.)capitalone\.com$/i.test(u.hostname) ? u.href : null;
+  } catch { return null; }
+}
+const acctLink = acct => cleanLink(state.settings.links?.[acct] || '');
+
+$('rf-accounts').addEventListener('click', ev => {
+  const edit = ev.target.closest('[data-link-edit]');
+  if (edit) { linkEdit = edit.dataset.linkEdit; renderRefresh(); $('rf-accounts').querySelector('.rf-link-form input')?.focus(); }
+  else if (ev.target.closest('[data-link-cancel]')) { linkEdit = null; renderRefresh(); }
+});
+$('rf-accounts').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const form = ev.target.closest('.rf-link-form');
+  if (!form) return;
+  const raw = form.querySelector('input').value.trim(), url = raw ? cleanLink(raw) : null;
+  if (raw && !url) { toast('That is not a capitalone.com address. Copy it from the address bar while the account is open.', true); return; }
+  const links = { ...(state.settings.links || {}) };
+  if (url) links[form.dataset.acct] = url; else delete links[form.dataset.acct];
+  state.settings.links = links;
+  linkEdit = null;
+  await commit();
+  renderRefresh();
+});
+$('rf-open-all').addEventListener('click', () => {
+  const urls = [...new Set(state.transactions.map(t => t.account))].map(acctLink).filter(Boolean);
+  const opened = urls.filter(u => window.open(u, '_blank')).length;
+  if (opened < urls.length) toast(`The browser held back ${urls.length - opened} of ${urls.length} tabs. Allow pop-ups for this site and they will all open next time.`, true);
+});
+
+let watchState = 'none'; // none | granted | prompt | denied | missing
+function renderWatch() {
+  const el = $('rf-watch'), w = watch.current();
+  if (!watch.supported) {
+    el.innerHTML = `<p>In Chrome or Edge on a computer, this app can watch the folder your downloads land in and import new exports by itself. This browser does not offer that.
+      On Android, install the app and use <b>Share → FinanceTracker</b> on the downloaded file instead.</p>`;
+    return;
+  }
+  if (!w) {
+    el.innerHTML = `<p>Choose the folder your Capital One downloads are saved to. From then on a new export is imported as soon as you come back to this tab: no choosing files.
+      The app only reads CSV files there, and only keeps the ones that are Capital One exports.</p>
+      <div class="set-row"><button class="btn" id="watch-pick">Choose a folder to watch</button></div>
+      <p style="margin-top:10px">If the browser refuses your Downloads folder itself, make a folder inside it (say <b>Downloads/Bank</b>), watch that, and save exports there.</p>`;
+    return;
+  }
+  const ok = watchState === 'granted';
+  const status = ok ? `Watching <b>${esc(w.name)}</b>${w.lastScan ? ` · checked ${new Date(w.lastScan).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}`
+    : watchState === 'missing' ? `<b>${esc(w.name)}</b> could not be read. It may have been moved or deleted.`
+    : `<b>${esc(w.name)}</b> needs your go-ahead again. Browsers ask once per visit unless you choose “Allow on every visit”.`;
+  el.innerHTML = `<div class="watch-on${ok ? '' : ' wait'}"><i></i><span>${status}</span></div>
+    <div class="set-row">
+      <button class="btn${ok ? '' : ' primary'}" id="watch-check">${ok ? 'Check now' : 'Reconnect folder'}</button>
+      <button class="btn" id="watch-pick">Change folder</button>
+      <button class="btn" id="watch-stop">Stop watching</button>
+    </div>`;
+}
+
+let scanning = false;
+async function watchScan({ ask = false, loud = false } = {}) {
+  if (!watch.current() || scanning || demo && !ask) return;
+  scanning = true;
+  try {
+    watchState = await watch.permission(ask);
+    if (watchState === 'granted') {
+      let files;
+      try { files = await watch.scan(); } catch { watchState = 'missing'; files = []; }
+      const n = files.length ? await ingest(files, { auto: true }) : 0;
+      if (loud && !n && watchState === 'granted') toast(`No new exports in ${watch.current().name}.`);
+    }
+  } catch {
+    watchState = 'prompt';
+  } finally {
+    scanning = false;
+  }
+  updateWatchChip();
+  if (refreshOverlay.classList.contains('open')) renderWatch();
+}
+// The topbar button doubles as the reconnect button when the folder is asleep.
+function updateWatchChip() {
+  const asleep = watch.current() && watchState !== 'granted';
+  $('refresh-open').querySelector('span').textContent = asleep ? 'Reconnect folder' : 'Refresh data';
+  $('refresh-open').dataset.asleep = asleep ? '1' : '';
+}
+
+$('rf-watch').addEventListener('click', async ev => {
+  if (ev.target.closest('#watch-pick')) {
+    try { await watch.pick(); }
+    catch (e) { if (e.name !== 'AbortError') toast('That folder could not be opened. Try a folder inside it.', true); return; }
+    await watchScan({ ask: true, loud: true });
+  } else if (ev.target.closest('#watch-check')) {
+    await watchScan({ ask: true, loud: true });
+  } else if (ev.target.closest('#watch-stop')) {
+    await watch.stop();
+    watchState = 'none';
+    updateWatchChip();
+    renderWatch();
+  }
+});
+
+function openRefresh() { renderRefresh(); refreshOverlay.classList.add('open'); }
+function closeRefresh() { refreshOverlay.classList.remove('open'); linkEdit = null; }
+$('refresh-open').addEventListener('click', async () => {
+  // One click wakes the folder and imports; the sheet only opens if that found nothing to do.
+  if ($('refresh-open').dataset.asleep) { await watchScan({ ask: true }); if (watchState === 'granted') return; }
+  openRefresh();
+});
+$('asof').addEventListener('click', openRefresh);
+$('welcome-refresh').addEventListener('click', openRefresh);
+$('close-refresh').addEventListener('click', closeRefresh);
+refreshOverlay.addEventListener('click', ev => { if (ev.target === refreshOverlay) closeRefresh(); });
+
+// Look in the folder whenever the app is looked at.
+let lastWatch = 0;
+function watchTick() {
+  if (document.visibilityState !== 'visible' || Date.now() - lastWatch < 3000) return;
+  lastWatch = Date.now();
+  watchScan();
+}
+window.addEventListener('focus', watchTick);
+document.addEventListener('visibilitychange', watchTick);
+setInterval(watchTick, 20000);
+
+// Files handed over by the system: "Open with" on a computer, Share on Android.
+let booted;
+const ready = new Promise(r => { booted = r; });
+window.launchQueue?.setConsumer(async params => {
+  if (!params.files?.length) return;
+  await ready;
+  importFiles(await Promise.all(params.files.map(h => h.getFile())));
+});
+async function drainInbox() {
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open('ft-inbox');
+    const items = [];
+    for (const req of await cache.keys()) {
+      items.push(...await (await cache.match(req)).json());
+      await cache.delete(req);
+    }
+    if (items.length) await ingest(items);
+  } catch {}
+}
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 const settingsOverlay = $('settings-overlay');
@@ -1326,6 +1543,7 @@ document.addEventListener('keydown', ev => {
   closeCmd();
   closeDrawer();
   closeSettings();
+  closeRefresh();
   closeInstall();
   closePicker();
 });
@@ -1423,6 +1641,7 @@ async function restoreBackup(file) {
   if (demo) { demo = false; state = await store.loadAll(); rangePreset = null; }
   const before = state.transactions.length;
   Object.assign(state, sync.merge(state, data));
+  state.transactions = A.repairStored(state.transactions);
   await commit();
   store.requestPersistence();
   closeSettings();
@@ -1484,7 +1703,7 @@ async function syncNow({ quiet = false } = {}) {
     const beforeCount = state.transactions.length;
     const beforeRules = state.meta.rulesUpdatedAt;
     const beforeSettings = JSON.stringify(state.settings);
-    if (remote) Object.assign(state, sync.merge(state, remote));
+    if (remote) { Object.assign(state, sync.merge(state, remote)); state.transactions = A.repairStored(state.transactions); }
     const changedLocally = state.transactions.length !== beforeCount
       || state.meta.rulesUpdatedAt !== beforeRules
       || JSON.stringify(state.settings) !== beforeSettings;
@@ -1672,6 +1891,7 @@ function busy() {
   return syncing
     || picker.classList.contains('open')
     || settingsOverlay.classList.contains('open')
+    || scanning
     || $('install-overlay').classList.contains('open')
     || !!document.querySelector('.overlay.open')
     || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'file');
@@ -1738,12 +1958,18 @@ async function registerServiceWorker() {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   state = await store.loadAll();
+  const healed = A.repairStored(state.transactions);
+  if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
+  await watch.load().catch(() => null);
   if (VIEWS[location.hash.slice(1)]) view = location.hash.slice(1);
   showView();
   updateInstallButtons();
   if (location.hash === '#install') openInstall();
   if (state.sync) { setDot('ok'); lastAutoSync = Date.now(); syncNow({ quiet: true }); }
   registerServiceWorker();
+  booted();
+  drainInbox();
+  watchScan();
   // Charts measure their text, so draw them again once the bundled faces are in.
   document.fonts?.ready.then(() => renderActive());
   try {

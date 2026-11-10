@@ -38,7 +38,8 @@ export const CHECKING_KEYWORD_RULES = [
   [['payroll', 'salary', 'direct dep', 'federal home loa', 'biweekly'], 'Income', false],
   [['venmo cashout', 'zelle deposit', 'cashapp deposit'], 'Income', false],
 
-  [['360 performance savings', 'transfer to savings', 'transfer from savings'], 'Savings Transfer', true],
+  [['360 performance savings', '360 savings', '360 money market', '360 checking',
+    'transfer to savings', 'transfer from savings'], 'Savings Transfer', true],
   [['capital one mobile pmt', 'capital one crcardpmt', 'bk of amer', 'bank of amer',
     'chase pmt', 'credit card pmt', 'citi card', 'discover pmt'], 'Credit Card Payment', true],
   [['student loan', 'loan pmt', 'sallie mae', 'navient',
@@ -50,6 +51,7 @@ export const CHECKING_KEYWORD_RULES = [
   [['netflix', 'spotify', 'hulu', 'disney', 'hbo', 'peacock', 'apple',
     'youtube premium', 'steam', 'playstation', 'nintendo', 'xbox',
     'nba league pass', 'porkbun'], 'Subscriptions', false],
+  [['uber eats', 'ubereats', 'uber *eats'], 'Dining', false],
   [['uber', 'lyft', 'metro', 'transit', 'parking', 'shell', 'exxon', 'bp ',
     'chevron', 'sunoco', 'wawa gas', 'marathon', 'sixt'], 'Transportation', false],
   [['safeway', 'kroger', 'whole foods', 'trader joe', 'aldi', 'publix', 'giant',
@@ -69,7 +71,7 @@ export const CHECKING_KEYWORD_RULES = [
 
 export const SAVINGS_KEYWORD_RULES = [
   [['monthly interest', 'interest paid', 'apy interest'], 'Interest Income', false],
-  [['360 checking', 'from 360 checking', 'to 360 checking'], 'Savings Transfer', true],
+  [['360 checking', '360 performance savings', '360 savings', '360 money market'], 'Savings Transfer', true],
   [['dept education', 'student ln', 'dept of education', 'student loan',
     'sallie mae', 'navient'], 'Loan Payment', true],
 ];
@@ -77,6 +79,20 @@ export const SAVINGS_KEYWORD_RULES = [
 export const TRANSFER_CATEGORIES = new Set([
   'Savings Transfer', 'Credit Card Payment', 'Loan Payment', 'P2P Transfer', 'Payment',
 ]);
+
+// A deposit filed under one of these is money coming back, not money earned.
+const NOT_SPENDING = new Set(['Income', 'Interest Income', 'Other']);
+const REFUND_RE = /refund|reversal|return|rebate|credit adj/i;
+
+// Short keywords must start a word: 'rent' is not in "CURRENT", 'hoa' not in "WHOA".
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const matchers = new Map();
+function hasKeyword(text, kw) {
+  if (kw.trim().length > 4) return text.includes(kw);
+  let re = matchers.get(kw);
+  if (!re) matchers.set(kw, re = new RegExp('(^|[^a-z0-9])' + escRe(kw)));
+  return re.test(text);
+}
 
 export const ALL_CATS = [
   'Income', 'Shopping', 'Subscriptions', 'Transportation', 'Groceries',
@@ -141,42 +157,68 @@ function parseAmount(v) {
   return Number(s);
 }
 
-export function detectFormat(headers, rows) {
+export function detectFormat(headers) {
   const cols = new Set(headers.map(h => h.trim().toLowerCase()));
-  if (cols.has('transaction type') && cols.has('transaction amount')) {
-    if (headers.includes('Transaction Description')) {
-      const sample = rows.map(r => (r['Transaction Description'] || '').toLowerCase()).join(' ');
-      // Savings receives deposits FROM checking; checking only sends TO savings.
-      if (sample.includes('deposit from 360 checking') || sample.includes('from 360 checking')) {
-        return 'savings';
-      }
-    }
-    return 'checking';
-  }
+  if (cols.has('transaction type') && cols.has('transaction amount')) return 'bank';
   if (cols.has('debit') && cols.has('credit') && cols.has('card no.')) return 'credit_card';
   return 'unknown';
 }
 
+// Checking and savings exports have the same columns. In order of trust: what
+// this account was last time (`known`, last four digits -> kind), the file name,
+// then the text of the rows. The first matters most: a short savings export may
+// hold nothing but an interest line, and filing it as a second checking account
+// would count its balance twice.
+function bankKind(rows, last4, { known = {}, name = '' } = {}, single = true) {
+  if (known[last4]) return known[last4];
+  if (single && /sav|money ?market/i.test(name)) return 'savings';
+  if (single && /check/i.test(name)) return 'checking';
+  const text = rows.map(r => (r['Transaction Description'] || '').toLowerCase()).join(' ');
+  // Savings receives deposits FROM checking; checking only sends TO savings.
+  if (text.includes('from 360 checking') || text.includes('to 360 checking')) return 'savings';
+  return 'checking';
+}
+
+// The accounts already stored, as last four digits -> kind.
+export function knownAccounts(stored) {
+  const known = {};
+  for (const t of stored) {
+    if (t.kind !== 'checking' && t.kind !== 'savings') continue;
+    const k = t.account.slice(-4);
+    if (known[k] !== 'savings') known[k] = t.kind;
+  }
+  return known;
+}
+
 // One file -> stored transactions. `ord` orders rows within a day (bank exports
-// list newest first), so the balance chart can take a day's closing balance.
-export function parseFile(text) {
+// list newest first). Accounts and cards are read per row: one card export can
+// hold several card numbers, and which comes first changes between exports.
+export function parseFile(text, hints = {}) {
   const { headers, rows } = parseCsv(text);
-  const format = detectFormat(headers, rows);
+  let format = detectFormat(headers);
   const out = [];
-  if (format === 'checking' || format === 'savings') {
-    const acctNum = String(rows[0]?.['Account Number'] || '').trim();
-    const label = `${format === 'savings' ? 'Savings' : 'Checking'} ...${acctNum.slice(-4)}`;
+  if (format === 'bank') {
+    const byAcct = new Map();
+    for (const r of rows) {
+      const k = String(r['Account Number'] || '').trim().slice(-4);
+      if (!byAcct.has(k)) byAcct.set(k, []);
+      byAcct.get(k).push(r);
+    }
+    const kinds = new Map([...byAcct].map(([k, list]) => [k, bankKind(list, k, hints, byAcct.size === 1)]));
+    format = kinds.values().next().value || 'checking';
     rows.forEach((r, i) => {
       const date = parseDate(r['Transaction Date']);
       const amount = parseAmount(r['Transaction Amount']);
       if (!date || isNaN(amount)) return;
       const bal = parseAmount(r['Balance']);
-      const credit = String(r['Transaction Type']).trim() === 'Credit';
+      const last4 = String(r['Account Number'] || '').trim().slice(-4);
+      const kind = kinds.get(last4);
+      const credit = String(r['Transaction Type']).trim().toLowerCase() === 'credit';
       out.push({
         date,
         description: String(r['Transaction Description'] || '').trim(),
-        kind: format,
-        account: label,
+        kind,
+        account: `${kind === 'savings' ? 'Savings' : 'Checking'} ...${last4}`,
         amount: round2(credit ? amount : -amount),
         balance: isNaN(bal) ? null : bal,
         raw_category: '',
@@ -184,18 +226,17 @@ export function parseFile(text) {
       });
     });
   } else if (format === 'credit_card') {
-    const card = String(rows[0]?.['Card No.'] || '').trim().slice(-4);
-    const label = `Credit Card ...${card}`;
     rows.forEach((r, i) => {
-      const date = parseDate(r['Transaction Date']);
+      const date = parseDate(r['Transaction Date']) || parseDate(r['Posted Date']);
       if (!date) return;
       const debit = parseAmount(r['Debit']);
       const credit = parseAmount(r['Credit']);
+      if (isNaN(debit) && isNaN(credit)) return;
       out.push({
         date,
         description: String(r['Description'] || '').trim(),
         kind: 'credit_card',
-        account: label,
+        account: `Credit Card ...${String(r['Card No.'] || '').trim().slice(-4)}`,
         amount: round2((isNaN(credit) ? 0 : credit) - (isNaN(debit) ? 0 : debit)),
         balance: null,
         raw_category: String(r['Category'] || '').trim(),
@@ -205,6 +246,32 @@ export function parseFile(text) {
   }
   assignIds(out);
   return { format, transactions: out };
+}
+
+// Heals data saved before accounts were remembered: if the same four digits are
+// stored as both a checking and a savings account, they are one savings account.
+// Returns the same array when there is nothing to fix.
+export function repairStored(stored) {
+  const kinds = new Map();
+  for (const t of stored) {
+    if (t.kind !== 'checking' && t.kind !== 'savings') continue;
+    const k = t.account.slice(-4);
+    if (!kinds.has(k)) kinds.set(k, new Set());
+    kinds.get(k).add(t.kind);
+  }
+  const both = new Set([...kinds].filter(([, v]) => v.size > 1).map(([k]) => k));
+  if (!both.size) return stored;
+  const seen = new Set(), out = [];
+  for (let t of stored) {
+    if (t.kind === 'checking' && both.has(t.account.slice(-4))) {
+      const account = `Savings ...${t.account.slice(-4)}`;
+      t = { ...t, kind: 'savings', account, id: account + t.id.slice(t.account.length) };
+    }
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out;
 }
 
 // A transaction's id is its content plus which occurrence of that content it is
@@ -235,22 +302,24 @@ export function buildCategorizer(rules, training) {
   return new Categorizer(corpus);
 }
 
+// -> [category, is_transfer, guessed]. `guessed` is true when nothing but the
+// similarity matcher chose the category.
 function baseCategory(t, ml) {
   if (t.kind === 'credit_card') {
     let cat = t.raw_category ? categorizeCC(t.raw_category) : 'Other';
     const up = t.description.toUpperCase();
     if (up.includes('COTFLT') || up.includes('COTHTL')) cat = 'Travel';
-    return [cat, TRANSFER_CATEGORIES.has(cat)];
+    return [cat, TRANSFER_CATEGORIES.has(cat), false];
   }
   const d = t.description.toLowerCase();
   const table = t.kind === 'savings' ? SAVINGS_KEYWORD_RULES : CHECKING_KEYWORD_RULES;
   for (const [kws, cat, isXfr] of table) {
-    if (kws.some(k => d.includes(k))) {
-      return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat)];
+    if (kws.some(k => hasKeyword(d, k))) {
+      return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat), false];
     }
   }
   const cat = ml.predict(t.description) || 'Other';
-  return [cat, t.kind === 'savings' ? false : TRANSFER_CATEGORIES.has(cat)];
+  return [cat, t.kind === 'savings' ? false : TRANSFER_CATEGORIES.has(cat), true];
 }
 
 export function amountRuleMatches(rule, merchant, absAmount) {
@@ -264,20 +333,30 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
   const amountRules = rules.amount_rules || [];
   const out = stored.map(t => {
     const merchant = normalizeMerchant(t.description);
-    let [category, isTransfer] = baseCategory(t, ml);
+    let [category, isTransfer, guessed] = baseCategory(t, ml);
     if (Object.prototype.hasOwnProperty.call(merchantRules, merchant)) {
       category = merchantRules[merchant];
       isTransfer = TRANSFER_CATEGORIES.has(category);
+      guessed = false;
     }
     const absAmt = Math.abs(t.amount);
     for (const r of amountRules) {
       if (amountRuleMatches(r, merchant, absAmt)) {
         category = r.category;
         isTransfer = TRANSFER_CATEGORIES.has(category);
+        guessed = false;
       }
     }
+    // Money coming back is not income. Every credit on a card that is not a
+    // payment is a refund. A bank deposit is one only when it is filed under a
+    // spending category and either says so or was filed there by your own rule:
+    // a paycheck the matcher mislabelled must not vanish from income.
+    const refund = t.amount > 0 && !isTransfer && (
+      t.kind === 'credit_card'
+      || (!NOT_SPENDING.has(category) && (REFUND_RE.test(t.description) || (!guessed && fromRule(merchantRules, amountRules, merchant, absAmt)))));
     return {
       id: t.id,
+      kind: t.kind,
       ts: localTs(t.date),
       date_iso: t.date,
       date_fmt: fmtDate(t.date),
@@ -289,10 +368,50 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
       balance: t.balance,
       ord: t.ord || 0,
       is_transfer: isTransfer,
+      refund,
     };
   });
+  orderWithinDays(out);
   out.sort((a, b) => b.ts - a.ts || b.ord - a.ord);
   return out;
+}
+
+function fromRule(merchantRules, amountRules, merchant, absAmt) {
+  return Object.prototype.hasOwnProperty.call(merchantRules, merchant)
+    || amountRules.some(r => amountRuleMatches(r, merchant, absAmt));
+}
+
+// Rows of one bank account on one day, put in the order they happened. `ord`
+// only orders rows within the file they came from, so a small refresh and an
+// older, larger export disagree. The balances do not: each row opens on the
+// balance the one before it closed on.
+const cents = n => Math.round(n * 100);
+function chain(rows) {
+  const left = [...rows];
+  const start = left.findIndex(r => !left.some(o => o !== r && cents(o.balance) === cents(r.balance - r.amount)));
+  if (start < 0) return null;
+  const out = left.splice(start, 1);
+  while (left.length) {
+    const prev = out[out.length - 1];
+    const i = left.findIndex(r => cents(r.balance - r.amount) === cents(prev.balance));
+    if (i < 0) return null;
+    out.push(left.splice(i, 1)[0]);
+  }
+  return out;
+}
+function orderWithinDays(txns) {
+  const groups = new Map();
+  for (const t of txns) {
+    if (t.balance == null) continue;
+    const k = t.account + '|' + t.date_iso;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2 || g.length > 200) continue;
+    const ordered = chain(g);
+    if (ordered) ordered.forEach((t, i) => { t.ord = i + 1; });
+  }
 }
 
 // ── Recurring streams ──────────────────────────────────────────────────────────
@@ -340,16 +459,25 @@ export function findRecurringStreams(txns) {
 
 // ── Combined assets over time ──────────────────────────────────────────────────
 
-// For each day with a bank balance: every bank account's latest balance, minus
-// the credit card balance reconstructed from the starting balance forward.
-export function buildAssetSeries(txns, ccStart = 0) {
+// Every bank account's latest balance, minus the credit card balance rebuilt
+// from the starting balance forward, for each day anything happened.
+// An account that has no rows yet on a given day is carried at the balance it
+// had just before its first row, so the line does not jump when a second
+// export starts later than the first. `legacy` reproduces the Python original
+// (such accounts count as zero, and card-only days are skipped).
+export function buildAssetSeries(txns, ccStart = 0, { legacy = false } = {}) {
   const chron = [...txns].sort((a, b) => a.ts - b.ts || a.ord - b.ord);
   const bank = chron.filter(t => t.balance != null && !t.account.startsWith('Credit Card'));
   if (!bank.length) return [];
   const cc = chron.filter(t => t.account.startsWith('Credit Card'));
 
-  const dates = [...new Set(bank.map(t => t.date_iso))].sort();
   const latest = {};
+  let days = bank.map(t => t.date_iso);
+  if (!legacy) {
+    for (const t of bank) if (!(t.account in latest)) latest[t.account] = t.balance - t.amount;
+    days = days.concat(cc.map(t => t.date_iso).filter(d => d >= bank[0].date_iso));
+  }
+  const dates = [...new Set(days)].sort();
   let bi = 0, ci = 0, ccCum = ccStart;
   const out = [];
   for (const date of dates) {
@@ -362,7 +490,7 @@ export function buildAssetSeries(txns, ccStart = 0) {
       ci++;
     }
     const totalBank = Object.values(latest).reduce((s, v) => s + v, 0);
-    const ccOut = cc.length && ci > 0 ? round2(Math.max(0, ccCum)) : 0;
+    const ccOut = cc.length && (ci > 0 || !legacy) ? round2(Math.max(0, ccCum)) : 0;
     out.push({
       date,
       total_bank: round2(totalBank),

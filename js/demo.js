@@ -75,6 +75,8 @@ export function demoFiles(today = new Date(), months = 14) {
     if ((monthIdx === 5 || monthIdx === 11) && dom === 9) { ccRow(d, 'COTFLT DELTA AIR LINES', 'Airfare', between(340, 480)); ccRow(d, 'COTHTL MARRIOTT DOWNTOWN', 'Lodging', between(480, 690)); }
     if (monthIdx === months - 2 && dom === 19) ccRow(d, 'BEST BUY 00412', 'Merchandise', 1249.99);
     if (monthIdx === months - 1 && dom === 3) ccRow(d, 'AMAZON.COM', 'Merchandise', 389.5);
+    // A return: money back on the card, which is not income.
+    if (monthIdx === months - 2 && dom === 24) { ccOwed -= 84.5; credit.push([isoOf(d), isoOf(d), '4321', 'AMAZON.COM', 'Merchandise', '', '84.50']); }
     if (monthIdx === 7 && dom === 27) ccRow(d, 'LATE PAYMENT FEE', 'Fee/Interest Charge', 29);
   }
 
