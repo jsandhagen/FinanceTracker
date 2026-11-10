@@ -30,6 +30,9 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   source has a type: Salary, Side income, Reimbursements (Venmo and the like: people paying you
   back), Interest or Other. Types are guessed (your main paycheck and its employer are Salary,
   payroll from anyone else is Side income) and you can change them, and give a source a name.
+- **Being paid back is not income.** Deposits from a source typed Reimbursements come off your
+  spending, in their own **Paid back** line, since which purchase they cover is not known. File
+  one under a category (tap its category in the ledger) and it comes off that category instead.
 - **Salary tracker and "what if".** Enter your salary, how often you are paid, and your bonus and
   the month it lands. Salary & raises works out federal tax, Social Security, Medicare and
   **Virginia** income tax, then backs your own rates out of the take-home you actually receive

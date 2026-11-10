@@ -205,12 +205,39 @@ export function sourceInfo(merchant, category, saved = {}, paycheck = null) {
   };
 }
 
+// ── Paid back ────────────────────────────────────────────────────────────────
+// Money people send you back (Venmo, Zelle and the like, or any source you type
+// as Reimbursements) is not income: it is your own spending coming back. It is
+// counted like a refund, off spending. Which purchase it was for is not known,
+// so it sits in its own line, PAID_BACK, off the total. File one under a
+// category (tap its category in the ledger) and it comes off that category
+// instead, like any refund.
+export const PAID_BACK = 'Paid back';
+
+// Marks those deposits in a list from analyzer.categorize, in place. `saved` is
+// settings.incomeSources. Returns the list.
+export function markPaidBack(txns, saved = {}) {
+  for (const t of txns) {
+    if (t.amount <= 0 || t.is_transfer || t.refund) continue;
+    if (sourceInfo(t.merchant, t.category, saved).kind !== 'reimburse') continue;
+    t.refund = true;
+    t.paid_back = true;
+    t.category = PAID_BACK;
+  }
+  return txns;
+}
+
+// What a deposit brings in from its source: what it earned, or, for money paid
+// back, the amount, so those sources stay listed with their type.
+const fromSource = t => (t.paid_back ? t.amount : earned(t));
+
 // Income in `ops` grouped by source, largest first, each with its kind, its
-// total, how many deposits, the last one and its months.
+// total, how many deposits, the last one and its months. Money paid back is
+// listed too, under kind 'reimburse', though it does not count as income.
 export function bySource(ops, saved = {}, paycheck = null) {
   const map = new Map();
   for (const t of ops) {
-    const v = earned(t);
+    const v = fromSource(t);
     if (!v) continue;
     let r = map.get(t.merchant);
     if (!r) map.set(t.merchant, r = { ...sourceInfo(t.merchant, t.category, saved, paycheck), total: 0, count: 0, last: '', months: {} });

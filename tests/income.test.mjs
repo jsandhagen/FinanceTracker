@@ -157,6 +157,41 @@ assert.equal(N.guessKind('RIVERSIDE SWIM CLUB PAYROLL', 'Income', null), 'salary
 assert.equal(N.guessKind('FEDERAL HOME LOAN MORTGAGE CORP', 'Income', 'FEDERAL HOME LOAN MORTGAGE'), 'salary');
 assert.equal(N.guessKind('Zelle deposit from Sam', 'Income', 'ACME'), 'reimburse');
 
+// ── Paid back ──
+// Venmo and the like are not income: they come off spending, in their own line.
+{
+  const before = I.summarize(ops);
+  const marked = N.markPaidBack(ops.map(t => ({ ...t })), {});
+  const back = marked.filter(t => t.paid_back);
+  assert.ok(back.length > 0 && back.every(t => t.merchant === 'VENMO CASHOUT' && t.refund && t.category === N.PAID_BACK));
+  const repaid = back.reduce((s, t) => s + t.amount, 0);
+  const after = I.summarize(marked);
+  close(after.income, before.income - repaid, 'paid back is not income');
+  close(after.expense, before.expense - repaid, 'it comes off spending');
+  close(after.net, before.net, 'what was kept is unchanged');
+  assert.ok(!I.totalsBy(marked, 'category').some(x => x.name === N.PAID_BACK), 'no category of its own in the spending list');
+  // Still listed as a source, so its type can be changed back.
+  const listed = N.bySource(marked, {}, pay.merchant);
+  assert.equal(listed.find(x => x.merchant === 'VENMO CASHOUT').kind, 'reimburse');
+  close(listed.find(x => x.merchant === 'VENMO CASHOUT').total, repaid, 'listed at what came in');
+  close(listed.filter(x => x.kind !== 'reimburse').reduce((s, x) => s + x.total, 0), after.income, 'the other sources add up to income');
+  // Typed as something else, it is income again.
+  const asSide = N.markPaidBack(ops.map(t => ({ ...t })), { 'VENMO CASHOUT': { kind: 'side' } });
+  assert.ok(!asSide.some(t => t.paid_back));
+  close(I.summarize(asSide).income, before.income, 'typed Side income, it counts');
+  // Any source typed Reimbursements, not only the guessed ones.
+  const swim = N.markPaidBack(ops.map(t => ({ ...t })), { 'RIVERSIDE SWIM CLUB PAYROLL': { kind: 'reimburse' } });
+  assert.ok(swim.some(t => t.paid_back && t.merchant === 'RIVERSIDE SWIM CLUB PAYROLL'));
+  // A deposit already filed under a category (a refund) keeps that category.
+  const filed = { id: 'x', amount: 40, merchant: 'VENMO CASHOUT', category: 'Dining', refund: true, is_transfer: false };
+  N.markPaidBack([filed], {});
+  assert.ok(filed.category === 'Dining' && !filed.paid_back);
+  // Transfers and money out are left alone.
+  const out = { amount: -40, merchant: 'VENMO PAYMENT', category: 'P2P Transfer', is_transfer: true };
+  N.markPaidBack([out], {});
+  assert.ok(!out.paid_back && !out.refund);
+}
+
 // The salary tracker counts salary sources only.
 const salaryOf = new Set(sources.filter(x => x.kind === 'salary').map(x => x.merchant));
 const tr = N.tracker({ year: 2026, dates, netPay: 3010, bonusNet: now.bonus.net, bonusMonth: 3, txns: ops, through, isSalary: t => salaryOf.has(t.merchant) });
