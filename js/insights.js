@@ -221,8 +221,10 @@ export function signals({ ops, priorOps, hasPrior, streams, asOf, money }) {
   const fees = sum(ops.filter(t => t.category === 'Fees'), spent);
   if (fees > 0.004) out.push({ tone: 'warn', title: `${money(fees)} in fees and interest`, detail: 'Charges the bank or card kept for itself.', cat: 'Fees' });
 
-  const back = sum(ops.filter(t => t.refund), t => t.amount);
+  const back = sum(ops.filter(t => t.refund && !t.paid_back), t => t.amount);
   if (back > 0.004) out.push({ tone: 'info', title: `${money(back)} came back as refunds`, detail: 'Taken off spending in its category, not counted as income.' });
+  const repaid = sum(ops.filter(t => t.paid_back), t => t.amount);
+  if (repaid > 0.004) out.push({ tone: 'info', title: `${money(repaid)} paid back to you`, detail: 'Venmo, Zelle and the like. Taken off spending, not counted as income.', cat: 'Paid back' });
 
   const other = ops.filter(t => t.category === 'Other');
   if (other.length >= 3) out.push({ tone: 'info', title: `${other.length} uncategorized transactions`, detail: `${money(sum(other, t => Math.abs(t.amount)))} sits in Other. Tap a category tag to file it.`, cat: 'Other' });

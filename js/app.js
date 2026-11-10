@@ -259,7 +259,7 @@ document.addEventListener('click', ev => {
 // (after a recategorize); otherwise the period goes back to its preset.
 function rebuild(keepRange) {
   initCharts();
-  ALL_TXN = A.categorize(state.transactions, state.rules, state.training);
+  ALL_TXN = N.markPaidBack(A.categorize(state.transactions, state.rules, state.training), state.settings.incomeSources);
   STREAMS = A.findRecurringStreams(ALL_TXN);
   BALANCE = A.buildAssetSeries(ALL_TXN, P.cardStart(state.transactions, state.settings.plaid?.cards, state.settings.cc_start));
 
@@ -541,10 +541,14 @@ function renderSankey(c) {
   };
   const left = fold(I.totalsBy(c.ops, 'merchant', 1).map(x => ({ ...x, name: srcName(x.name) })), 5, 'Other income').map(x => ({ ...x, color: C.in, tip: 'Income' }));
   const right = fold(I.totalsBy(c.ops, 'category'), 9, 'Everything else').map(x => ({ ...x, color: C.out, tip: 'Spending', cat: x.folded ? null : x.name }));
+  // Money paid back covers part of the spending on the right, so it flows in
+  // from the left beside income without being counted as income.
+  const back = paidBack(c.ops);
+  if (back > 0.004) left.push({ name: N.PAID_BACK, total: back, color: KIND_COLOR.reimburse, tip: 'Paid back to you' });
   if (net < 0) left.push({ name: 'Drawn from balance', total: -net, color: C.other, tip: 'Shortfall' });
   if (net > 0) right.push({ name: 'Kept', total: net, color: C.kept, tip: 'Not spent' });
 
-  const total = Math.max(income, expense);
+  const total = Math.max(income, expense) + Math.max(0, back);
   const W = Math.max(300, el.clientWidth), narrow = W < 560;
   const gap = 14, nodeW = 4, rows = Math.max(left.length, right.length);
   const H = Math.max(280, rows * 34);
@@ -596,7 +600,8 @@ function renderPlan(c) {
 
   const all = I.totalsBy(c.ops, 'category').map(x => ({ name: x.name, avg: x.total / months }));
   const active = all.filter(x => !cpExcluded.has(x.name));
-  const totalSpend = active.reduce((s, x) => s + x.avg, 0);
+  const backMonthly = paidBack(c.ops) / months;
+  const totalSpend = Math.max(0, active.reduce((s, x) => s + x.avg, 0) - backMonthly);
   const remaining = monthlyIncome - totalSpend;
   const scaleMax = Math.max(monthlyIncome, totalSpend, 1);
 
@@ -622,7 +627,8 @@ function renderPlan(c) {
 
   $('cp-summary').innerHTML = `
     <div class="sum-row"><span>Monthly income</span><span class="amt">${money(monthlyIncome)}</span></div>
-    <div class="sum-row"><span>Spending counted</span><span class="amt">−$${fmt(totalSpend)}</span></div>
+    ${backMonthly > 0.004 ? `<div class="sum-row"><span>Paid back to you</span><span class="amt">+$${fmt(backMonthly)}</span></div>` : ''}
+    <div class="sum-row"><span>Spending counted${backMonthly > 0.004 ? ', after that' : ''}</span><span class="amt">−$${fmt(totalSpend)}</span></div>
     <div class="sum-row total"><span>Remaining</span><span class="amt ${remaining >= 0 ? 'pos' : 'neg'}">${signed(remaining)}/mo</span></div>`;
 }
 
@@ -643,8 +649,9 @@ $('cp-income-reset').addEventListener('click', () => { cpIncomeOverride = null; 
 function renderSpending(c) {
   const cats = I.totalsBy(c.ops, 'category');
   const before = new Map(I.totalsBy(c.priorOps, 'category').map(x => [x.name, x.total]));
-  const total = c.cur.expense, max = cats[0]?.total || 1;
-  $('sp-cat-meta').textContent = `${money0(total)} across ${cats.length} categories`;
+  const back = paidBack(c.ops), max = cats[0]?.total || 1;
+  const total = cats.reduce((s, x) => s + x.total, 0); // before what was paid back
+  $('sp-cat-meta').textContent = `${money0(c.cur.expense)} across ${cats.length} categories${back > 0.004 ? `, after ${money0(back)} paid back` : ''}`;
   $('sp-cats').innerHTML = cats.length ? `<thead><tr><th>Category</th><th class="col-bar"></th><th class="num">Amount</th><th class="num">Share</th>${c.hasPrior ? '<th class="num col-hide-sm">vs prior</th>' : ''}<th class="num col-hide-sm">Txns</th></tr></thead>
     <tbody>${cats.map(x => {
       const d = c.hasPrior ? relDelta(x.total, before.get(x.name), false) : null;
@@ -654,7 +661,10 @@ function renderSpending(c) {
         <td class="num">${money(x.total)}</td><td class="num dim">${pct(x.total / total, 1)}</td>
         ${c.hasPrior ? `<td class="num col-hide-sm">${deltaHtml(d) || '<span class="dim">new</span>'}</td>` : ''}
         <td class="num dim col-hide-sm">${x.count}</td></tr>`;
-    }).join('')}</tbody>` : `<tbody><tr><td class="empty">No spending in this period.</td></tr></tbody>`;
+    }).join('')}${back > 0.004 ? `<tr class="link" data-txn-cat="${N.PAID_BACK}">
+        <td><span class="swatch" style="background:${KIND_COLOR.reimburse}"></span>${N.PAID_BACK} <small class="dim">Venmo, Zelle and the like</small></td>
+        <td class="col-bar"></td><td class="num pos">−${money(back)}</td><td class="num dim"></td>
+        ${c.hasPrior ? '<td class="num col-hide-sm"></td>' : ''}<td class="num dim col-hide-sm">${c.ops.filter(t => t.paid_back).length}</td></tr>` : ''}</tbody>` : `<tbody><tr><td class="empty">No spending in this period.</td></tr></tbody>`;
 
   // Stacked by month. The six largest categories of all time keep their colour
   // whatever the period; the rest fold into one grey band.
@@ -808,6 +818,9 @@ $('bud-clear').addEventListener('click', () => {
   if (confirm('Remove every category budget?')) saveBudgets({});
 });
 
+// What was paid back to you in `ops` (see income.js, PAID_BACK).
+const paidBack = ops => ops.reduce((s, t) => s + (t.paid_back ? t.amount : 0), 0);
+
 // ── Income: sources ───────────────────────────────────────────────────────────
 // Every deposit that counts as income, grouped by who paid it. Each source has
 // a type: salary, a side job, people paying you back, interest or other. Types
@@ -834,18 +847,23 @@ function renderSources(c) {
   const vs = c.hasPrior ? `vs prior ${c.days}d` : '';
   const perMonth = c.days / 30.44;
 
-  const reimb = totals.reimburse || 0;
+  // Money paid back is listed so its type can be changed, but it is not income.
+  const reimb = totals.reimburse || 0, earnedTotal = total - reimb;
+  const priorEarned = Object.entries(prior).reduce((a, [k, v]) => a + (k === 'reimburse' ? 0 : v), 0);
   setKpis('src-kpis', [
-    kpiTile({ label: 'All income', value: money0(total), delta: c.hasPrior ? relDelta(total, Object.values(prior).reduce((a, b) => a + b, 0), true) : null,
-      sub: reimb > 0 ? `${money0(total - reimb)} without reimbursements` : vs }),
-    ...kinds.map(k => kpiTile({ label: N.KINDS[k], value: money0(totals[k]),
-      delta: c.hasPrior ? relDelta(totals[k], prior[k], k !== 'reimburse') : null,
-      sub: `${pct(totals[k] / total)} · ${money0(totals[k] / perMonth)}/mo`,
-      spark: `<div class="meter" aria-hidden="true"><div style="width:${(totals[k] / total * 100).toFixed(1)}%;background:${KIND_COLOR[k]}"></div></div>` })),
+    kpiTile({ label: 'All income', value: money0(earnedTotal), delta: c.hasPrior ? relDelta(earnedTotal, priorEarned, true) : null,
+      sub: reimb > 0 ? `not counting ${money0(reimb)} paid back` : vs }),
+    ...kinds.map(k => k === 'reimburse'
+      ? kpiTile({ label: 'Paid back to you', value: money0(reimb), delta: c.hasPrior ? relDelta(reimb, prior.reimburse, false) : null,
+        sub: 'taken off spending, not income' })
+      : kpiTile({ label: N.KINDS[k], value: money0(totals[k]),
+        delta: c.hasPrior ? relDelta(totals[k], prior[k], true) : null,
+        sub: `${pct(totals[k] / earnedTotal)} · ${money0(totals[k] / perMonth)}/mo`,
+        spark: `<div class="meter" aria-hidden="true"><div style="width:${(totals[k] / earnedTotal * 100).toFixed(1)}%;background:${KIND_COLOR[k]}"></div></div>` })),
   ]);
 
   // Stacked by type, a bar a month.
-  $('src-chart-meta').textContent = `${src.length} source${src.length === 1 ? '' : 's'} · ${money0(total / perMonth)} a month on average`;
+  $('src-chart-meta').textContent = `${src.length} source${src.length === 1 ? '' : 's'} · ${money0(earnedTotal / perMonth)} a month of income on average`;
   $('src-legend').innerHTML = kinds.map(k => `<span><i style="background:${KIND_COLOR[k]}"></i>${N.KINDS[k]}</span>`).join('');
   chart('src-chart', {
     type: 'bar',
@@ -867,13 +885,13 @@ function renderSources(c) {
         ${x.name !== x.merchant ? `<small>${esc(x.merchant)}</small>` : ''}<button class="link-btn src-see" data-txn-search="${esc(x.merchant)}">deposits →</button></td>
       <td>${kindSelect(x)}${x.set ? '' : '<small class="src-guess">guessed</small>'}</td>
       <td class="num">${money(x.total)}</td>
-      <td class="num dim col-hide-sm">${pct(x.total / total, 1)}</td>
+      <td class="num dim col-hide-sm">${x.kind === 'reimburse' ? 'off spending' : pct(x.total / earnedTotal, 1)}</td>
       <td class="num dim col-hide-sm">${money0(x.total / perMonth)}</td>
       <td class="num dim col-hide-sm">${x.count}</td>
       <td class="dim col-hide-sm">${shortDate(A.localTs(x.last))}</td></tr>`).join('')}</tbody>`
     : `<tbody><tr><td class="empty">No income in this period.</td></tr></tbody>`;
 
-  $('src-foot').innerHTML = `Types: ${KIND_ORDER.map(k => `<b>${N.KINDS[k]}</b> ${KIND_NOTE[k]}`).join(' · ')}. Guessed types: your main paycheck and other deposits from the same employer are Salary, payroll from anyone else is Side income, Venmo, Zelle, Cash App and PayPal are Reimbursements. Change one and it sticks. Only Salary counts toward the <button class="link-btn" data-goto="salary">Salary &amp; raises</button> tracker. Reimbursements still count as income in the Overview and Cash flow totals.`;
+  $('src-foot').innerHTML = `Types: ${KIND_ORDER.map(k => `<b>${N.KINDS[k]}</b> ${KIND_NOTE[k]}`).join(' · ')}. Guessed types: your main paycheck and other deposits from the same employer are Salary, payroll from anyone else is Side income, Venmo, Zelle, Cash App and PayPal are Reimbursements. Change one and it sticks. Only Salary counts toward the <button class="link-btn" data-goto="salary">Salary &amp; raises</button> tracker. <b>Reimbursements are not income</b>: they come off your spending as <button class="link-btn" data-txn-cat="Paid back">Paid back</button>. To take one off a particular category instead, tap its category in the ledger. Selling something or a friend's share of rent you did not front? Type that source Other income.`;
 }
 
 async function saveSource(merchant, patch) {
@@ -883,7 +901,8 @@ async function saveSource(merchant, patch) {
   if (Object.keys(cur).length) all[merchant] = cur; else delete all[merchant];
   state.settings.incomeSources = all;
   await commit();
-  renderActive();
+  // A source's type decides whether its deposits are income or money paid back.
+  if (patch.kind !== undefined) rebuild(true); else renderActive();
 }
 $('src-table').addEventListener('change', ev => {
   const k = ev.target.closest('.src-kind'), n = ev.target.closest('.src-name');
@@ -1351,7 +1370,8 @@ function openDrawer(t) {
       <dt>Statement text</dt><dd class="mono wrap">${esc(t.description)}</dd>
       ${t.balance != null ? `<dt>Balance after</dt><dd class="mono">${money(t.balance)}</dd>` : ''}
       ${t.is_transfer ? '<dt>Counted</dt><dd>Transfer between your own accounts, left out of income and spending.</dd>' : ''}
-      ${t.refund ? `<dt>Counted</dt><dd>Refund: taken off ${esc(t.category)} spending, not counted as income.</dd>` : ''}
+      ${t.paid_back ? `<dt>Counted</dt><dd>Paid back to you: taken off total spending, not counted as income. If you know what it was for, change its category (just this amount) and it comes off that category instead. If it really is income, type its source on the <button class="link-btn" data-goto="income">Income</button> tab.</dd>`
+        : t.refund ? `<dt>Counted</dt><dd>Refund: taken off ${esc(t.category)} spending, not counted as income.</dd>` : ''}
     </dl>
     <div class="dr-section">
       <div class="dr-section-head"><span>${esc(t.merchant)} · all time</span><span class="mono">${same.length}× · ${signed(total)}</span></div>
