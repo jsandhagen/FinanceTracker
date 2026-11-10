@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>FinanceTracker</title>
   <meta name="description" content="Private spending dashboard for Capital One CSV exports. Runs entirely on your device." />
-  <meta name="theme-color" content="#0b0e12" />
+  <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
   <meta name="robots" content="noindex" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,7 +15,6 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-  <link rel="preload" href="vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="vendor/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/app.css" />
   <script src="vendor/chart.umd.min.js"></script>
@@ -44,7 +43,7 @@
 <section class="welcome" id="welcome" hidden>
   <div class="welcome-inner">
     <div class="brand-mark"><span class="brand-glyph"></span>FINANCETRACKER</div>
-    <h1>Your money, as an operating picture.</h1>
+    <h1>Your money, as an operating picture</h1>
     <p class="subtitle">Drop in Capital One CSV exports to get net worth, cash flow, budgets, recurring bills and every transaction in one console. Nothing leaves this device.</p>
 
     <div class="panel upload-panel">
@@ -99,7 +98,7 @@
       <div class="topbar-row">
         <div class="crumb"><span>Workspace</span><i>/</i><h1 class="view-title" id="view-title">Overview</h1></div>
         <button class="cmd-trigger" id="cmd-open" title="Search views, categories, merchants and actions">
-          <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
+          <b class="prompt">&gt;</b><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
         </button>
         <div class="topbar-actions">
           <span class="asof" id="asof"></span>
@@ -361,7 +360,7 @@
 <div class="overlay top" id="cmd-overlay">
   <div class="cmd" role="dialog" aria-modal="true" aria-label="Command palette">
     <div class="input-icon">
-      <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg>
+      <b class="prompt">&gt;</b>
       <input id="cmd-input" type="text" placeholder="Jump to a view, category, merchant or action" autocomplete="off" spellcheck="false" />
     </div>
     <div id="cmd-list" role="listbox"></div>

@@ -49,13 +49,13 @@ const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLoca
 // for signed figures in text, where the sign says it too.
 const C = {
   in: '#3987e5', out: '#d95926', kept: '#199e70',
-  ink: '#f6f7f9', ink2: '#abb3bf', ink3: '#8f99a8',
-  grid: 'rgba(255,255,255,0.07)', surface: '#13171c', other: '#738091',
+  ink: '#ededed', ink2: '#b4b4b4', ink3: '#7a7a7a',
+  grid: 'rgba(255,255,255,0.1)', surface: '#060606', other: '#6e6e6e',
 };
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'];
-const HEAT = ['#184f95', '#256abf', '#3987e5', '#86b6ef'];
+const HEAT = ['#333333', '#5e5e5e', '#9a9a9a', '#ededed']; // one neutral ramp, brighter for a heavier day
 const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
-const ZERO = '#1a1f26'; // an empty heatmap day
+const ZERO = '#121212'; // an empty heatmap day
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let state;            // what storage.js holds
@@ -109,18 +109,6 @@ const crosshair = {
   },
 };
 
-// A soft glow under any line marked `glow`, so the lead series lifts off the grid.
-const glow = {
-  id: 'glow',
-  beforeDatasetDraw(c, args) {
-    const ds = c.data.datasets[args.index];
-    if (!ds.glow) return;
-    c.ctx.save();
-    c.ctx.shadowColor = ds.borderColor; c.ctx.shadowBlur = 12;
-  },
-  afterDatasetDraw(c, args) { if (c.data.datasets[args.index].glow) c.ctx.restore(); },
-};
-
 function initCharts() {
   if (chartsReady) return;
   chartsReady = true;
@@ -135,14 +123,14 @@ function initCharts() {
   d.plugins.legend.labels.boxHeight = 2;
   d.plugins.legend.labels.padding = 14;
   d.plugins.legend.labels.color = C.ink2;
-  d.plugins.legend.labels.font = { family: "'Inter', system-ui, sans-serif", size: 11 };
+  d.plugins.legend.labels.font = { family: MONO, size: 10 };
   d.plugins.legend.align = 'start';
   Object.assign(d.plugins.tooltip, {
-    backgroundColor: 'rgba(8,10,13,0.94)', borderColor: '#323a45', borderWidth: 1, cornerRadius: 2, padding: 9,
+    backgroundColor: '#000', borderColor: '#b4b4b4', borderWidth: 1, cornerRadius: 0, padding: 9,
     titleColor: C.ink2, bodyColor: C.ink, boxWidth: 8, boxHeight: 8, boxPadding: 4,
     titleFont: { family: MONO, size: 10, weight: '500' }, bodyFont: { family: MONO, size: 11 }, footerFont: { family: MONO, size: 11 },
   });
-  Chart.register(crosshair, glow);
+  Chart.register(crosshair);
 }
 
 function chart(id, cfg) {
@@ -151,7 +139,7 @@ function chart(id, cfg) {
   return charts[id];
 }
 const yMoney = { ticks: { callback: v => moneyK(v), padding: 8 }, grid: { color: C.grid }, border: { display: false, dash: [2, 4] } };
-const xPlain = extra => ({ grid: { display: false }, border: { color: '#323a45' }, ticks: { maxRotation: 0, autoSkipPadding: 12, ...extra } });
+const xPlain = extra => ({ grid: { display: false }, border: { color: '#3d3d3d' }, ticks: { maxRotation: 0, autoSkipPadding: 12, ...extra } });
 const hoverLine = { interaction: { mode: 'index', intersect: false } };
 
 // Tiny inline charts for the stat tiles.
@@ -349,7 +337,7 @@ function renderOverview(c) {
     const first = bal[0].net, last = bal[bal.length - 1].net, diff = last - first;
     tiles.push(kpiTile({ label: 'Net worth', value: money0(last),
       delta: { v: diff, text: money0(Math.abs(diff)), good: Math.abs(diff) < 0.5 ? null : diff > 0 }, sub: 'over period',
-      spark: sparkLine(bal.map(d => d.net), C.in) }));
+      spark: sparkLine(bal.map(d => d.net), C.ink) }));
   }
   tiles.push(kpiTile({ label: 'Income', value: money0(cur.income), delta: hasPrior ? relDelta(cur.income, prior.income, true) : null, sub: vs, spark: sparkBars(b.inc, C.in) }));
   tiles.push(kpiTile({ label: 'Spending', value: money0(cur.expense), delta: hasPrior ? relDelta(cur.expense, prior.expense, false) : null, sub: vs, spark: sparkBars(b.exp, C.out) }));
@@ -367,13 +355,13 @@ function renderOverview(c) {
 
   if (bal.length > 1) {
     const g = $('balance-chart').getContext('2d').createLinearGradient(0, 0, 0, 260);
-    g.addColorStop(0, 'rgba(57,135,229,0.32)'); g.addColorStop(0.7, 'rgba(57,135,229,0.04)'); g.addColorStop(1, 'rgba(57,135,229,0)');
+    g.addColorStop(0, 'rgba(237,237,237,0.14)'); g.addColorStop(1, 'rgba(237,237,237,0)');
     chart('balance-chart', {
       type: 'line',
       data: { labels: bal.map(d => A.fmtDate(d.date)), datasets: [
-        { label: 'Net worth', data: bal.map(d => d.net), borderColor: '#5aa2f5', backgroundColor: g, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4, tension: 0.15, fill: true, glow: true },
-        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.kept, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [3, 3] },
-        { label: 'Card balance', data: bal.map(d => d.cc_outstanding), borderColor: C.out, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [3, 3] },
+        { label: 'Net worth', data: bal.map(d => d.net), borderColor: C.ink, backgroundColor: g, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0, fill: true },
+        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.in, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0, borderDash: [3, 3] },
+        { label: 'Card balance', data: bal.map(d => d.cc_outstanding), borderColor: C.out, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0, borderDash: [3, 3] },
       ] },
       options: { ...hoverLine,
         plugins: { crosshair: { on: true }, tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -393,8 +381,8 @@ function renderOverview(c) {
   chart('pace-chart', {
     type: 'line',
     data: { labels: Array.from({ length: n }, (_, i) => i + 1), datasets: [
-      { label: monthName(p.ym), data: p.cur, borderColor: '#5aa2f5', backgroundColor: 'rgba(57,135,229,0.12)', borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4, fill: true, glow: true },
-      ...(p.hasPrev ? [{ label: monthName(p.pm), data: p.prev, borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 3 }] : []),
+      { label: monthName(p.ym), data: p.cur, borderColor: C.ink, backgroundColor: 'rgba(237,237,237,0.08)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true },
+      ...(p.hasPrev ? [{ label: monthName(p.pm), data: p.prev, borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 3, stepped: true }] : []),
     ] },
     options: { ...hoverLine,
       plugins: { crosshair: { on: true }, tooltip: { callbacks: { title: x => `Day ${x[0].label}`, label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -406,8 +394,8 @@ function renderOverview(c) {
     type: 'bar',
     data: { labels: months.map(m => monthLabel(m.ym)), datasets: [
       { label: 'Net', type: 'line', data: months.map(m => A.round2(m.net)), borderColor: C.ink, backgroundColor: C.ink, borderWidth: 1.25, pointRadius: 2.5, pointHoverRadius: 4, pointBorderColor: C.surface, pointBorderWidth: 2, tension: 0 },
-      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: C.in, borderRadius: 1, maxBarThickness: 22 },
-      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: C.out, borderRadius: 1, maxBarThickness: 22 },
+      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: C.in, borderRadius: 0, maxBarThickness: 22 },
+      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: C.out, borderRadius: 0, maxBarThickness: 22 },
     ] },
     options: { ...hoverLine,
       plugins: { tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -428,7 +416,7 @@ function renderOverview(c) {
   $('ov-insights').innerHTML = sig.length ? sig.slice(0, 6).map(s => {
     const nav = s.cat ? `data-txn-cat="${esc(s.cat)}"` : s.search ? `data-txn-search="${esc(s.search)}"` : '';
     return `<div class="signal ${s.tone}${nav ? ' link' : ''}" ${nav}>
-      <span class="signal-mark">${s.tone === 'good' ? '✓' : s.tone === 'warn' ? '!' : 'i'}</span>
+      <span class="signal-mark">${s.tone === 'good' ? '+' : s.tone === 'warn' ? '!' : 'i'}</span>
       <div><div class="signal-title">${esc(s.title)}</div><div class="signal-detail">${esc(s.detail)}</div></div>
     </div>`;
   }).join('') : empty('Nothing stands out in this period.');
@@ -681,7 +669,7 @@ function renderSpending(c) {
 
 // One square per day, a column per week, darker blue for a quiet day and
 // lighter for a heavy one. Shows at most the last year of the period; a short
-// period is given the weeks before it as dimmed context, so the grid stays wide.
+// period is given the weeks before it as context, so the grid stays wide.
 function renderHeatmap(c) {
   const el = $('heatmap');
   const daily = I.dailySpend(c.allOps);
@@ -711,10 +699,12 @@ function renderHeatmap(c) {
       lastMonth = d.getMonth();
       if (x - lastLabelX > 28) { labels += `<text class="hm-label" x="${x}" y="11">${MONTH_ABBR[lastMonth]}</text>`; lastLabelX = x; }
     }
-    rects += `<rect x="${x}" y="${padT + dow * step}" width="${cell}" height="${cell}" rx="1"${inPeriod ? '' : ' class="out"'} fill="${v > 0 ? HEAT[level(v)] : ZERO}" data-tip="${A.fmtDate(iso)}|${v > 0 ? money(v) : 'No spending'}"/>`;
+    // Days before the period are drawn small, so they read as context, not as low values.
+    const sz = inPeriod ? cell : Math.round(cell * 0.4), off = (cell - sz) / 2;
+    rects += `<rect x="${x + off}" y="${padT + dow * step + off}" width="${sz}" height="${sz}" ${inPeriod ? '' : ' class="out"'} fill="${v > 0 ? HEAT[level(v)] : ZERO}" data-tip="${A.fmtDate(iso)}|${v > 0 ? money(v) : 'No spending'}"/>`;
   }
   ['Mon', 'Wed', 'Fri'].forEach((nme, k) => { labels += `<text class="hm-label" x="0" y="${padT + (1 + k * 2) * step + 10}">${nme}</text>`; });
-  $('heat-meta').textContent = `${n - spendDays} no-spend days` + (peak.v ? ` · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}` : '') + (start < from ? ' · earlier weeks dimmed' : '');
+  $('heat-meta').textContent = `${n - spendDays} no-spend days` + (peak.v ? ` · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}` : '') + (start < from ? ' · earlier weeks shown small' : '');
   el.innerHTML = `<div class="hm-scroll"><svg width="${padL + weeks * step}" height="${padT + 7 * step}" role="img" aria-label="Spending per day">${labels}${rects}</svg></div>
     <div class="legend hm-legend"><span>Less</span><i style="background:${ZERO}"></i>${HEAT.map(h => `<i style="background:${h}"></i>`).join('')}<span>More</span></div>`;
   const sc = el.querySelector('.hm-scroll'); sc.scrollLeft = sc.scrollWidth;

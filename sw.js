@@ -11,7 +11,7 @@ const SHELL = [
   './css/app.css',
   './js/app.js', './js/analyzer.js', './js/categorizer.js', './js/csv.js',
   './js/storage.js', './js/sync.js', './js/version.js', './js/insights.js', './js/demo.js',
-  './vendor/chart.umd.min.js', './vendor/fonts/inter.woff2', './vendor/fonts/jetbrains-mono.woff2',
+  './vendor/chart.umd.min.js', './vendor/fonts/jetbrains-mono.woff2',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 
