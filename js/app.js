@@ -48,14 +48,14 @@ const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLoca
 // for colour-blind readers, which green and red do not. Green and red are kept
 // for signed figures in text, where the sign says it too.
 const C = {
-  in: '#3987e5', out: '#d95926', kept: '#199e70',
+  in: '#3987e5', out: '#d95926', kept: '#199e70', lead: '#5aa2f5',
   ink: '#ededed', ink2: '#b4b4b4', ink3: '#7a7a7a',
   grid: 'rgba(255,255,255,0.1)', surface: '#060606', other: '#6e6e6e',
 };
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'];
-const HEAT = ['#333333', '#5e5e5e', '#9a9a9a', '#ededed']; // one neutral ramp, brighter for a heavier day
+const HEAT = ['#184f95', '#256abf', '#3987e5', '#9ec5f4']; // one blue ramp, brighter for a heavier day
 const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
-const ZERO = '#121212'; // an empty heatmap day
+const ZERO = '#10151c'; // an empty heatmap day
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let state;            // what storage.js holds
@@ -103,7 +103,7 @@ const crosshair = {
     if (!act.length) return;
     const x = act[0].element.x, { top, bottom } = c.chartArea, g = c.ctx;
     g.save();
-    g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 1; g.setLineDash([3, 3]);
+    g.strokeStyle = 'rgba(138,187,255,0.6)'; g.lineWidth = 1; g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(x, top); g.lineTo(x, bottom); g.stroke();
     g.restore();
   },
@@ -126,7 +126,7 @@ function initCharts() {
   d.plugins.legend.labels.font = { family: MONO, size: 10 };
   d.plugins.legend.align = 'start';
   Object.assign(d.plugins.tooltip, {
-    backgroundColor: '#000', borderColor: '#b4b4b4', borderWidth: 1, cornerRadius: 0, padding: 9,
+    backgroundColor: '#000', borderColor: '#4c90f0', borderWidth: 1, cornerRadius: 0, padding: 9,
     titleColor: C.ink2, bodyColor: C.ink, boxWidth: 8, boxHeight: 8, boxPadding: 4,
     titleFont: { family: MONO, size: 10, weight: '500' }, bodyFont: { family: MONO, size: 11 }, footerFont: { family: MONO, size: 11 },
   });
@@ -337,7 +337,7 @@ function renderOverview(c) {
     const first = bal[0].net, last = bal[bal.length - 1].net, diff = last - first;
     tiles.push(kpiTile({ label: 'Net worth', value: money0(last),
       delta: { v: diff, text: money0(Math.abs(diff)), good: Math.abs(diff) < 0.5 ? null : diff > 0 }, sub: 'over period',
-      spark: sparkLine(bal.map(d => d.net), C.ink) }));
+      spark: sparkLine(bal.map(d => d.net), C.lead) }));
   }
   tiles.push(kpiTile({ label: 'Income', value: money0(cur.income), delta: hasPrior ? relDelta(cur.income, prior.income, true) : null, sub: vs, spark: sparkBars(b.inc, C.in) }));
   tiles.push(kpiTile({ label: 'Spending', value: money0(cur.expense), delta: hasPrior ? relDelta(cur.expense, prior.expense, false) : null, sub: vs, spark: sparkBars(b.exp, C.out) }));
@@ -355,12 +355,12 @@ function renderOverview(c) {
 
   if (bal.length > 1) {
     const g = $('balance-chart').getContext('2d').createLinearGradient(0, 0, 0, 260);
-    g.addColorStop(0, 'rgba(237,237,237,0.14)'); g.addColorStop(1, 'rgba(237,237,237,0)');
+    g.addColorStop(0, 'rgba(57,135,229,0.3)'); g.addColorStop(1, 'rgba(57,135,229,0)');
     chart('balance-chart', {
       type: 'line',
       data: { labels: bal.map(d => A.fmtDate(d.date)), datasets: [
-        { label: 'Net worth', data: bal.map(d => d.net), borderColor: C.ink, backgroundColor: g, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0, fill: true },
-        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.in, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0, borderDash: [3, 3] },
+        { label: 'Net worth', data: bal.map(d => d.net), borderColor: C.lead, backgroundColor: g, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0, fill: true },
+        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.ink2, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0, borderDash: [3, 3] },
         { label: 'Card balance', data: bal.map(d => d.cc_outstanding), borderColor: C.out, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0, borderDash: [3, 3] },
       ] },
       options: { ...hoverLine,
@@ -381,7 +381,7 @@ function renderOverview(c) {
   chart('pace-chart', {
     type: 'line',
     data: { labels: Array.from({ length: n }, (_, i) => i + 1), datasets: [
-      { label: monthName(p.ym), data: p.cur, borderColor: C.ink, backgroundColor: 'rgba(237,237,237,0.08)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true },
+      { label: monthName(p.ym), data: p.cur, borderColor: C.lead, backgroundColor: 'rgba(57,135,229,0.16)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true },
       ...(p.hasPrev ? [{ label: monthName(p.pm), data: p.prev, borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 3, stepped: true }] : []),
     ] },
     options: { ...hoverLine,
@@ -1036,6 +1036,8 @@ document.querySelectorAll('.preset-btn').forEach(btn => btn.addEventListener('cl
 });
 
 // ── Status bar ───────────────────────────────────────────────────────────────
+const clockText = () => new Date().toISOString().slice(0, 19).replace('T', ' ') + 'Z';
+setInterval(() => { const el = $('clock'); if (el && !document.hidden) el.textContent = clockText(); }, 1000);
 function renderStatus() {
   if (!ALL_TXN.length) return;
   const accts = new Set(ALL_TXN.map(t => t.account)).size;
@@ -1049,6 +1051,7 @@ function renderStatus() {
     <span>DATA ${A.fmtDate(isoLocal(DATA_MIN)).toUpperCase()} → ${A.fmtDate(isoLocal(DATA_MAX)).toUpperCase()}</span>
     <span><i class="dot ${demo || !state.sync ? '' : syncCls || 'ok'}"></i>${syncTxt}</span>
     <span class="spacer"></span>
+    <span class="clock" id="clock">${clockText()}</span>
     <span>${BUILD.startsWith('__') ? 'DEV BUILD' : 'BUILD ' + esc(BUILD.split('-')[0])}</span>`;
 }
 
