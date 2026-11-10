@@ -35,7 +35,8 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   what you keep of it, how each tax moves, and what it does to your savings rate. Its
   month-by-month tracking counts only sources typed Salary.
 - **Optional bank connection through Plaid**, so new transactions arrive without downloading
-  anything. See [server/README.md](server/README.md).
+  anything. The [Android app](android/README.md) connects by itself, with nothing to host; a
+  browser needs a small relay ([server/README.md](server/README.md)).
 - **Fast to get around.** `Ctrl`/`⌘` + `K` opens a command palette for views, periods,
   categories and merchants; `1`–`7` switch views. Tap any transaction for its detail and the
   merchant's history. The side rail collapses to icons.
@@ -80,6 +81,12 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 Install it rather than only bookmarking it: Safari may clear storage for websites you have not
 visited in a while, but not for apps on the home screen.
 
+### As a native Android app
+
+There is also an Android build of the same code, for connecting to your bank through Plaid with
+no server in between. It is installed from an APK rather than from the browser:
+[android/README.md](android/README.md).
+
 ## Salary & raises
 
 The figures are estimates for tax year 2026, built from the federal brackets and standard
@@ -99,7 +106,8 @@ the deposits from sources typed Salary with what the plan expects on each payday
 
 ## Refreshing your data
 
-The hands-off way is a [bank connection through Plaid](server/README.md). Without one, the export
+The hands-off way is a bank connection through Plaid: from the [Android app](android/README.md)
+directly, or from a browser through a [relay](server/README.md). Without one, the export
 is a click on Capital One's site, and everything after that click can be automatic:
 
 1. **Refresh data → Choose a folder to watch** (Chrome or Edge on a computer) and pick the folder
@@ -156,6 +164,10 @@ same synthetic exports and checks that totals, every category, the recurring str
 assets series agree:
 
 ```bash
+npm test    # every tests/*.test.mjs
+```
+
+```bash
 python tests/make_fixtures.py /tmp/fx
 echo '{"merchant": {}, "amount_rules": []}' > /tmp/rules.json
 python tests/run_python.py ../FinanceTracker /tmp/fx /tmp/rules.json /tmp/py.json
@@ -184,5 +196,10 @@ updates never touch it. **Settings → App version** shows which commit is runni
 
 If the tests fail the deploy stops and the live app stays as it was. A new file the app loads
 must be added to `SHELL` in `sw.js` so it is available offline.
+
+`package.json`, `capacitor.config.json` and `android/` exist only to package the Android app
+([android/README.md](android/README.md)); the website still has no build step and does not use
+them. A new file the app loads is picked up by the Android build by itself if it sits in `js/`,
+`css/`, `vendor/` or `icons/` (`tools/build-www.mjs`).
 
 `vendor/chart.umd.min.js` is Chart.js 4.4.3 (MIT), vendored so the app works offline.
