@@ -1321,8 +1321,8 @@ async function ingest(items, { auto = false } = {}) {
     ? `${auto ? 'Imported' : 'Added'} ${added.toLocaleString()} new transaction${added === 1 ? '' : 's'}${perAcct.size > 1 ? ` (${detail})` : perAcct.size ? ` to ${[...perAcct.keys()][0]}` : ''}`
     : 'Nothing new: every transaction in those files is already saved';
   if (added && skipped) msg += `, skipped ${skipped.toLocaleString()} already saved`;
-  if (unknown.length) msg += `. Not recognised: ${unknown.join(', ')}`;
-  toast(msg + '.', unknown.length > 0);
+  if (unknown.length) msg += `. Skipped, not a Capital One export: ${unknown.join(', ')}`;
+  toast(msg + '.', unknown.length > 0 && !added); // extra files picked along the way are not a failure
   return added;
 }
 
@@ -1444,15 +1444,17 @@ $('rf-open-all').addEventListener('click', () => {
 let watchState = 'none'; // none | granted | prompt | denied | missing
 function renderWatch() {
   const el = $('rf-watch'), w = watch.current();
-  $('rf-watch-title').textContent = isAndroid ? 'On this phone: share the download to the app' : 'Or skip step 2: watch a folder';
-  if (isAndroid) {
+  // A phone whose browser can read folders gets the watched folder like a
+  // computer does; the rest get the two routes that work without it.
+  const phoneRoutes = isAndroid && !watch.supported;
+  $('rf-watch-title').textContent = phoneRoutes ? 'On this phone: bring the downloads in'
+    : isAndroid ? 'Or skip step 2: watch your Downloads folder' : 'Or skip step 2: watch a folder';
+  if (phoneRoutes) {
     const installed = isStandalone();
-    el.innerHTML = `<p>Chrome on Android keeps downloads in its own private folder, which other apps cannot look into, so the app cannot pick them up by itself, and the file chooser above may not show them. Chrome can hand them over:</p>
+    el.innerHTML = `<p>Browsers on Android cannot look into your folders by themselves, so the files have to be handed over. Either way takes a few taps, and you can bring in every new file at once:</p>
       <ol class="phone-steps">
-        ${installed ? '' : '<li><span><b>Install this app</b> first (button below). Only an installed app appears in the Share menu.</span></li>'}
-        <li><span>After pressing <b>Download</b> on Capital One, open Chrome's menu <b>⋮ → Downloads</b>.</span></li>
-        <li><span>Press and hold the CSV (tap any others to select them too), then tap <b>Share</b>.</span></li>
-        <li><span>Choose <b>FinanceTracker</b>. The app opens and imports them.</span></li>
+        <li><span><b>Choose them:</b> tap the box above, open <b>My Files → Downloads</b>, then press and hold one Capital One CSV and tap the others to select them too. Picking an old or unrelated file is harmless: it is skipped.</span></li>
+        <li><span><b>Or share them:</b> in My Files or Chrome's <b>⋮ → Downloads</b>, select the CSVs, tap <b>Share</b> and choose <b>FinanceTracker</b>.${installed ? '' : ' This needs the app installed (button below).'}</span></li>
       </ol>
       ${installed ? '' : '<div class="set-row"><button class="btn" id="rf-install">Install app</button></div>'}`;
     return;
