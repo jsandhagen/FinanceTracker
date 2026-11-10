@@ -35,6 +35,7 @@
     <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></g>
     <g id="i-x" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4 4l8 8M12 4l-8 8"/></g>
     <g id="i-chevron" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M9 4L5 8l4 4M13 4L9 8l4 4"/></g>
+    <g id="i-accounts" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3.5" width="12" height="9"/><path d="M2 6.5h12M4.5 10h3"/></g>
     <g id="i-lock" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="7" width="9" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></g>
   </defs>
 </svg>
@@ -83,6 +84,7 @@
       <button class="nav-item" data-view="budgets" data-rail-tip="Budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span><kbd>4</kbd></button>
       <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
       <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
+      <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>7</kbd></button>
     </nav>
     <div class="nav-section">
       <div class="nav-label">Accounts</div>
@@ -312,6 +314,15 @@
           <div id="txn-more" class="more-row" hidden></div>
         </div>
       </section>
+
+      <!-- Accounts: what is saved for each account, and how to bring it up to date -->
+      <section class="view" data-view="accounts" hidden>
+        <div class="kpi-row" id="acct-kpis"></div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">Accounts and refreshing</span><span class="panel-meta" id="acct-meta"></span></div>
+          <div class="panel-body" id="acct-slot"></div>
+        </div>
+      </section>
     </div>
 
     <footer class="statusbar" id="statusbar"></footer>
@@ -324,6 +335,7 @@
     <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
     <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
     <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Ledger</span></button>
+    <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
   </nav>
 </div>
 
@@ -399,10 +411,11 @@
       <h2 id="rf-title">Refresh data</h2>
       <button class="icon-btn" id="close-refresh" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
     </div>
-    <div class="sheet-body">
+    <div class="sheet-body" id="refresh-sheet-body">
+    <div id="refresh-block">
 
     <div class="set-sec" id="rf-accounts-sec">
-      <h3>What you have</h3>
+      <h3>Your accounts</h3>
       <div class="rf-accounts" id="rf-accounts"></div>
     </div>
 
@@ -429,10 +442,11 @@
     </div>
 
     <div class="set-sec" id="rf-watch-sec">
-      <h3>Or skip step 2: watch a folder</h3>
+      <h3 id="rf-watch-title">Or skip step 2: watch a folder</h3>
       <div id="rf-watch"></div>
     </div>
 
+    </div>
     </div>
   </div>
 </div>

@@ -565,8 +565,8 @@ tr.lapsed td { color: var(--ink3); }
   .statusbar { display: none; }
   .grid > .c4 { grid-column: span 12; }
   .cmd-trigger kbd, .btn-label { display: none; }
-  .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: #000; border-top: 1px solid var(--line-strong); padding-bottom: var(--safe-b); }
-  .tabbar .nav-item { flex-direction: column; gap: 4px; height: 52px; padding: 0; justify-content: center; font-size: 8.5px; letter-spacing: 0.04em; text-align: center; }
+  .tabbar { display: grid; grid-template-columns: repeat(7, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: #000; border-top: 1px solid var(--line-strong); padding-bottom: var(--safe-b); }
+  .tabbar .nav-item { flex-direction: column; gap: 4px; height: 52px; padding: 0; justify-content: center; font-size: 8px; min-width: 0; letter-spacing: 0.04em; text-align: center; }
   .tabbar .nav-item span { flex: none; }
   .topbar::after { height: 4px; }
   #toast { bottom: calc(64px + var(--safe-b)); }
@@ -619,4 +619,11 @@ tr.lapsed td { color: var(--ink3); }
 .rf-go .link-btn { font-size: 10px; color: var(--ink3); }
 .rf-link-form { grid-column: 1 / -1; display: flex; gap: 6px; }
 .rf-link-form .set-input { flex: 1; min-width: 0; }
-@media (max-width: 640px) { .rf-acct { grid-template-columns: 1fr auto auto; } .rf-link-form { flex-wrap: wrap; } .rf-acct > :nth-child(2) { grid-row: 2; grid-column: 1 / -1; color: var(--ink3); } .rf-acct small { display: inline; margin-left: 6px; } }
+@media (max-width: 640px) { .rf-acct { grid-template-columns: 1fr auto auto; } .rf-link-form { flex-wrap: wrap; } .rf-acct > :nth-child(2) { grid-row: 2; grid-column: 1 / -1; color: var(--ink3); } .rf-acct > :nth-child(2) small { display: inline; margin-left: 6px; } .rf-acct .rf-name small { display: block; margin: 2px 0 0; } }
+
+/* ── Accounts view ── */
+#acct-slot .set-sec h3 { font-size: 11px; }
+.rf-acct .rf-name b { color: var(--ink); font-weight: 600; }
+.rf-acct .rf-name small { white-space: normal; }
+.phone-steps { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 6px; color: var(--ink2); font-size: 11.5px; }
+.phone-steps b { color: var(--ink); }

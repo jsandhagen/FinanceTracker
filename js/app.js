@@ -187,14 +187,15 @@ document.addEventListener('pointermove', ev => {
 document.addEventListener('scroll', hideTip, true);
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions' };
-const RANGE_FREE = new Set(['budgets', 'recurring']); // these keep their own clock
+const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
+const RANGE_FREE = new Set(['budgets', 'recurring', 'accounts']); // these keep their own clock
 
 function showView() {
   const has = state.transactions.length > 0;
   $('welcome').hidden = has;
   $('dashboard').hidden = !has;
   $('demo-banner').hidden = !demo;
+  placeRefresh();
   if (has) rebuild(false);
 }
 
@@ -302,7 +303,7 @@ function renderActive() {
   if (!CTX || $('dashboard').hidden) return;
   hideTip();
   ({ overview: renderOverview, cashflow: renderCashflow, spending: renderSpending,
-    budgets: renderBudgets, recurring: renderRecurring, transactions: renderTransactions })[view](CTX);
+    budgets: renderBudgets, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
 }
 
 let resizeTimer;
@@ -1079,7 +1080,7 @@ function openCmd() {
     ...Object.entries(VIEWS).map(([k, label]) => ({ kind: 'View', label, run: () => setView(k) })),
     ...[['30', 'Last month'], ['90', 'Last 3 months'], ['180', 'Last 6 months'], ['ytd', 'Year to date'], ['365', 'Last year'], ['0', 'All time']]
       .map(([k, label]) => ({ kind: 'Period', label, run: () => applyPreset(k) })),
-    { kind: 'Action', label: 'Refresh data (add CSV files)', run: openRefresh },
+    { kind: 'Action', label: 'Refresh data (add CSV files)', run: () => setView('accounts') },
     ...(watch.current() ? [{ kind: 'Action', label: `Check ${watch.current().name} for new exports`, run: () => watchScan({ ask: true, loud: true }) }] : []),
     { kind: 'Action', label: 'Export visible transactions as CSV', run: () => { setView('transactions'); $('txn-export').click(); } },
     { kind: 'Action', label: 'Download backup', run: () => $('export-backup').click() },
@@ -1310,7 +1311,7 @@ async function ingest(items, { auto = false } = {}) {
     store.requestPersistence();
     showView();
   } else if (wasDemo) showView();
-  if ($('refresh-overlay').classList.contains('open')) renderRefresh();
+  if ($('refresh-overlay').classList.contains('open') || view === 'accounts') renderRefresh();
   if (auto && !added) return 0;
   const detail = [...perAcct].map(([a, n]) => `${a.replace(' ...', ' ')} +${n.toLocaleString()}`).join(', ');
   let msg = added
@@ -1359,28 +1360,43 @@ function periodAdvice(age, from) {
     : `needs ${age + OVERLAP} days: choose a Time Period back to ${shortDate(from)}`;
 }
 
+// Per account: newest and oldest day, row count, and the latest balance
+// (bank accounts; ALL_TXN is newest first, so the first balance seen is it).
+function accountFacts() {
+  const facts = new Map();
+  for (const t of state.transactions) {
+    let f = facts.get(t.account);
+    if (!f) facts.set(t.account, f = { last: t.date, first: t.date, n: 0, balance: null, kind: t.kind });
+    if (t.date > f.last) f.last = t.date;
+    if (t.date < f.first) f.first = t.date;
+    f.n++;
+  }
+  for (const t of ALL_TXN) { const f = facts.get(t.account); if (f && f.balance == null && t.balance != null) f.balance = t.balance; }
+  return facts;
+}
+
 function renderRefresh() {
-  const last = new Map();
-  if (!demo) for (const t of state.transactions) if (!(last.get(t.account) >= t.date)) last.set(t.account, t.date);
-  $('rf-accounts-sec').hidden = !last.size;
+  const facts = accountFacts();
+  $('rf-accounts-sec').hidden = !facts.size;
   let oldest = null;
-  $('rf-accounts').innerHTML = [...last].sort((a, b) => a[0].localeCompare(b[0])).map(([acct, iso]) => {
-    const ts = A.localTs(iso), age = dataAge(ts), from = addDays(ts, -OVERLAP);
+  $('rf-accounts').innerHTML = [...facts].sort((a, b) => a[0].localeCompare(b[0])).map(([acct, f]) => {
+    const ts = A.localTs(f.last), age = dataAge(ts), from = addDays(ts, -OVERLAP);
     if (oldest == null || from < oldest) oldest = from;
     const url = acctLink(acct);
-    const action = linkEdit === acct
+    const action = demo ? '<span></span>' : linkEdit === acct
       ? `<form class="rf-link-form" data-acct="${esc(acct)}"><input class="set-input" type="text" inputmode="url" placeholder="Paste any page address of this account from Capital One" value="${esc(url || '')}" aria-label="Capital One page for ${esc(acct)}" /><button class="btn small primary">Save</button><button type="button" class="btn small" data-link-cancel>Cancel</button></form>`
       : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Download ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
       : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
-    return `<div class="rf-acct"><span>${esc(acct)}</span>
+    const since = new Date(A.localTs(f.first)).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+    return `<div class="rf-acct"><span class="rf-name"><b>${esc(acct)}</b><small>${f.balance != null ? `${money(f.balance)} · ` : ''}${f.n.toLocaleString()} transaction${f.n === 1 ? '' : 's'} since ${since}</small></span>
       <span>through ${shortDate(ts)}<small>${periodAdvice(age, from)}</small></span>
       <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span>${action}</div>`;
   }).join('');
-  const linked = [...last.keys()].filter(acctLink);
+  const linked = demo ? [] : [...facts.keys()].filter(acctLink);
   $('rf-open-all').hidden = linked.length < 2;
   $('rf-open-all').textContent = `Open all ${linked.length} ↗`;
   $('rf-open-home').classList.toggle('primary', !linked.length);
-  $('rf-link-note').hidden = !last.size || linked.length === last.size;
+  $('rf-link-note').hidden = demo || !facts.size || linked.length === facts.size;
   const worst = oldest == null ? null : dataAge(oldest) - OVERLAP;
   $('rf-hint').textContent = worst == null ? 'For a first import, pick the longest Time Period offered.'
     : worst <= DEFAULT_PERIOD - OVERLAP ? 'Every account is covered by the form as it opens: CSV, Last 30 Days. Just press Download.'
@@ -1422,9 +1438,21 @@ $('rf-open-all').addEventListener('click', () => {
 let watchState = 'none'; // none | granted | prompt | denied | missing
 function renderWatch() {
   const el = $('rf-watch'), w = watch.current();
+  $('rf-watch-title').textContent = isAndroid ? 'On this phone: share the download to the app' : 'Or skip step 2: watch a folder';
+  if (isAndroid) {
+    const installed = isStandalone();
+    el.innerHTML = `<p>Chrome on Android keeps downloads in its own private folder, which other apps cannot look into, so the app cannot pick them up by itself, and the file chooser above may not show them. Chrome can hand them over:</p>
+      <ol class="phone-steps">
+        ${installed ? '' : '<li><span><b>Install this app</b> first (button below). Only an installed app appears in the Share menu.</span></li>'}
+        <li><span>After pressing <b>Download</b> on Capital One, open Chrome's menu <b>⋮ → Downloads</b>.</span></li>
+        <li><span>Press and hold the CSV (tap any others to select them too), then tap <b>Share</b>.</span></li>
+        <li><span>Choose <b>FinanceTracker</b>. The app opens and imports them.</span></li>
+      </ol>
+      ${installed ? '' : '<div class="set-row"><button class="btn" id="rf-install">Install app</button></div>'}`;
+    return;
+  }
   if (!watch.supported) {
-    el.innerHTML = `<p>In Chrome or Edge on a computer, this app can watch the folder your downloads land in and import new exports by itself. This browser does not offer that.
-      On Android, install the app and use <b>Share → FinanceTracker</b> on the downloaded file instead.</p>`;
+    el.innerHTML = `<p>In Chrome or Edge on a computer, this app can watch the folder your downloads land in and import new exports by itself. This browser does not offer that.</p>`;
     return;
   }
   if (!w) {
@@ -1488,7 +1516,33 @@ $('rf-watch').addEventListener('click', async ev => {
   }
 });
 
-function openRefresh() { renderRefresh(); refreshOverlay.classList.add('open'); }
+// One block of controls, two homes: the Accounts view, or the sheet when
+// there is no data yet and so no dashboard to show it in.
+function placeRefresh() {
+  const home = $('dashboard').hidden ? $('refresh-sheet-body') : $('acct-slot');
+  if ($('refresh-block').parentElement !== home) home.appendChild($('refresh-block'));
+}
+
+function renderAccounts() {
+  const facts = accountFacts();
+  const bank = [...facts.values()].filter(f => f.balance != null).reduce((s, f) => s + f.balance, 0);
+  const behind = Math.max(0, ...[...facts.values()].map(f => dataAge(A.localTs(f.last))));
+  const owed = BALANCE.length ? BALANCE[BALANCE.length - 1].cc_outstanding : null;
+  const hasCard = [...facts.values()].some(f => f.kind === 'credit_card');
+  setKpis('acct-kpis', [
+    kpiTile({ label: 'In the bank', value: money0(bank), sub: 'checking + savings, latest balances' }),
+    ...(hasCard && owed != null ? [kpiTile({ label: 'Card balance', value: money0(owed), sub: 'estimated; set the start in Settings' })] : []),
+    kpiTile({ label: 'Furthest behind', value: `${behind}<small> days</small>`, tone: behind >= 21 ? 'neg' : '', sub: behind > DEFAULT_PERIOD - OVERLAP ? 'needs a longer Time Period' : 'Last 30 Days covers it' }),
+    kpiTile({ label: 'Saved', value: state.transactions.length.toLocaleString(), sub: `transactions in ${facts.size} account${facts.size === 1 ? '' : 's'}` }),
+  ]);
+  $('acct-meta').textContent = demo ? 'demo accounts' : 'stored on this device';
+  renderRefresh();
+}
+
+function openRefresh() {
+  if (!$('dashboard').hidden) { setView('accounts'); return; }
+  renderRefresh(); refreshOverlay.classList.add('open');
+}
 function closeRefresh() { refreshOverlay.classList.remove('open'); linkEdit = null; }
 $('refresh-open').addEventListener('click', async () => {
   // One click wakes the folder and imports; the sheet only opens if that found nothing to do.
@@ -1496,6 +1550,7 @@ $('refresh-open').addEventListener('click', async () => {
   openRefresh();
 });
 $('asof').addEventListener('click', openRefresh);
+document.addEventListener('click', ev => { if (ev.target.closest('#rf-install')) openInstall(); });
 $('welcome-refresh').addEventListener('click', openRefresh);
 $('close-refresh').addEventListener('click', closeRefresh);
 refreshOverlay.addEventListener('click', ev => { if (ev.target === refreshOverlay) closeRefresh(); });
