@@ -48,6 +48,7 @@ export function demoFiles(today = new Date(), months = 14) {
       chkRow(d, 'Withdrawal to 360 Performance Savings XXXXXXX5678', 450, false);
       savRow(d, 'Deposit from 360 Checking XXXXXXX1234', 450);
     }
+    if (d.getMonth() === 2 && dom === 13) chkRow(d, 'ACME CORP BONUS PAYROLL', 5200, true); // the yearly bonus
     if (dom === 1) { chkRow(d, 'RENT PAYMENT PORTAL', 1725, false); savRow(d, 'Monthly Interest Paid', Math.round(sav * 0.0031 * 100) / 100); }
     if (dom === 5) chkRow(d, 'GEICO INS PREM', 128.4, false);
     if (dom === 12) chkRow(d, 'DOMINION ENERGY BILLPAY', between(68, [11, 0, 1, 6, 7].includes(d.getMonth()) ? 165 : 105), false);

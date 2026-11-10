@@ -4,6 +4,7 @@
 //   training      [{ text, category }]
 //   settings      { cc_start }
 //   sync          { token, passphrase, gistId, lastSync }   (never synced itself)
+//   plaid         { mode: 'direct', clientId, secret, env } or { url, key } for a relay (never synced)
 //   meta          { updatedAt, rulesUpdatedAt }
 
 const DB_NAME = 'financetracker';
@@ -38,14 +39,15 @@ export const set = (key, value) => tx('readwrite', s => s.put(value, key));
 export const del = key => tx('readwrite', s => s.delete(key));
 
 export async function loadAll() {
-  const [transactions, rules, training, settings, sync, meta] = await Promise.all(
-    ['transactions', 'rules', 'training', 'settings', 'sync', 'meta'].map(get));
+  const [transactions, rules, training, settings, sync, meta, plaid] = await Promise.all(
+    ['transactions', 'rules', 'training', 'settings', 'sync', 'meta', 'plaid'].map(get));
   return {
     transactions: transactions || [],
     rules: { merchant: {}, amount_rules: [], ...(rules || {}) },
     training: training || [],
     settings: { cc_start: 0, ...(settings || {}) },
     sync: sync || null,
+    plaid: plaid || null,
     meta: { updatedAt: 0, rulesUpdatedAt: 0, ...(meta || {}) },
   };
 }

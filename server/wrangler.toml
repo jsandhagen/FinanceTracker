@@ -1,0 +1,15 @@
+# Cloudflare Worker settings for the Plaid relay. See README.md in this folder.
+name = "financetracker-plaid"
+main = "plaid-worker.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# "sandbox" while trying it out with Plaid's test bank, "production" for real accounts.
+PLAID_ENV = "production"
+# The address the app is served from: scheme and host only, no path.
+ALLOWED_ORIGIN = "https://jsandhagen.github.io"
+
+# PLAID_CLIENT_ID, PLAID_SECRET and APP_KEY are secrets, not listed here:
+#   npx wrangler secret put PLAID_CLIENT_ID
+#   npx wrangler secret put PLAID_SECRET
+#   npx wrangler secret put APP_KEY
