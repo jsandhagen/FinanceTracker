@@ -1350,13 +1350,22 @@ document.addEventListener('drop', e => {
 const refreshOverlay = $('refresh-overlay');
 const dataAge = ts => Math.max(0, Math.round((dayStart(Date.now()) - ts) / DAY));
 
+// Capital One's download form opens on CSV and "Last 30 Days", and this app
+// cannot reach into their page to change it. What it can do is say when the
+// form is already right, which with regular refreshes is every time.
+const DEFAULT_PERIOD = 30, OVERLAP = 3;
+function periodAdvice(age, from) {
+  return age <= DEFAULT_PERIOD - OVERLAP ? 'Last 30 Days covers it: just press Download'
+    : `needs ${age + OVERLAP} days: choose a Time Period back to ${shortDate(from)}`;
+}
+
 function renderRefresh() {
   const last = new Map();
   if (!demo) for (const t of state.transactions) if (!(last.get(t.account) >= t.date)) last.set(t.account, t.date);
   $('rf-accounts-sec').hidden = !last.size;
   let oldest = null;
   $('rf-accounts').innerHTML = [...last].sort((a, b) => a[0].localeCompare(b[0])).map(([acct, iso]) => {
-    const ts = A.localTs(iso), age = dataAge(ts), from = addDays(ts, -3);
+    const ts = A.localTs(iso), age = dataAge(ts), from = addDays(ts, -OVERLAP);
     if (oldest == null || from < oldest) oldest = from;
     const url = acctLink(acct);
     const action = linkEdit === acct
@@ -1364,7 +1373,7 @@ function renderRefresh() {
       : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Download ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
       : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
     return `<div class="rf-acct"><span>${esc(acct)}</span>
-      <span>through ${shortDate(ts)}<small>export from ${shortDate(from)} or earlier</small></span>
+      <span>through ${shortDate(ts)}<small>${periodAdvice(age, from)}</small></span>
       <span class="tag ${age >= 21 ? 'over' : age >= 7 ? 'near' : 'ok'}">${age === 0 ? 'TODAY' : `${age}D BEHIND`}</span>${action}</div>`;
   }).join('');
   const linked = [...last.keys()].filter(acctLink);
@@ -1372,7 +1381,10 @@ function renderRefresh() {
   $('rf-open-all').textContent = `Open all ${linked.length} ↗`;
   $('rf-open-home').classList.toggle('primary', !linked.length);
   $('rf-link-note').hidden = !last.size || linked.length === last.size;
-  $('rf-hint').textContent = oldest != null ? `One range covers everything: ${shortDate(oldest)} to today.` : 'For a first import, pick the longest range offered.';
+  const worst = oldest == null ? null : dataAge(oldest) - OVERLAP;
+  $('rf-hint').textContent = worst == null ? 'For a first import, pick the longest Time Period offered.'
+    : worst <= DEFAULT_PERIOD - OVERLAP ? 'Every account is covered by the form as it opens: CSV, Last 30 Days. Just press Download.'
+    : `Furthest behind needs a Time Period reaching back to ${shortDate(oldest)}.`;
   renderWatch();
 }
 
