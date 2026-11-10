@@ -190,10 +190,12 @@ document.addEventListener('pointermove', ev => {
 document.addEventListener('scroll', hideTip, true);
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', spending: 'Spending', budgets: 'Budgets', income: 'Income', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
-const PARENT = { budgets: 'spending' };   // Budgets sits under Spending in the menu
+const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', income: 'Income', salary: 'Salary & raises', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
+const PARENT = { salary: 'income', budgets: 'spending' };   // sub-items in the menu
+// The tabs across the top of a section with sub-items.
+const SUBS = { income: [['income', 'Sources'], ['salary', 'Salary & raises']], spending: [['spending', 'Breakdown'], ['budgets', 'Budgets']] };
 const NAV_KEYS = Object.keys(VIEWS).filter(v => !PARENT[v]); // what the number keys 1-7 open
-const RANGE_FREE = new Set(['budgets', 'income', 'recurring', 'accounts']); // these keep their own clock
+const RANGE_FREE = new Set(['salary', 'budgets', 'recurring', 'accounts']); // these keep their own clock
 
 function showView() {
   const has = state.transactions.length > 0;
@@ -217,8 +219,8 @@ function setView(v, { push = true } = {}) {
     b.classList.toggle('active', b.dataset.view === v || (b.dataset.view === top && !b.closest('.nav')));
     b.classList.toggle('open', !sub && b.dataset.view === top && top !== v);
   });
-  $('spend-tabs').hidden = top !== 'spending';
-  $('spend-tabs').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.goto === v));
+  $('subnav').hidden = !SUBS[top];
+  $('subnav-seg').innerHTML = (SUBS[top] || []).map(([k, label]) => `<button data-goto="${k}"${k === v ? ' class="active"' : ''}>${esc(label)}</button>`).join('');
   $('view-title').textContent = PARENT[v] ? `${VIEWS[top]} / ${VIEWS[v]}` : VIEWS[v];
   $('filter-bar').hidden = RANGE_FREE.has(v);
   if (push && location.hash !== '#' + v) {
@@ -323,7 +325,7 @@ function renderActive() {
   if (!CTX || $('dashboard').hidden) return;
   hideTip();
   ({ overview: renderOverview, cashflow: renderCashflow, spending: renderSpending,
-    budgets: renderBudgets, income: renderIncome, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
+    budgets: renderBudgets, income: renderSources, salary: renderIncome, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
 }
 
 let resizeTimer;
@@ -536,7 +538,7 @@ function renderSankey(c) {
     const rest = list.slice(n - 1);
     return [...list.slice(0, n - 1).map(x => ({ ...x })), { name: label, total: rest.reduce((s, x) => s + x.total, 0), folded: true }];
   };
-  const left = fold(I.totalsBy(c.ops, 'merchant', 1), 5, 'Other income').map(x => ({ ...x, color: C.in, tip: 'Income' }));
+  const left = fold(I.totalsBy(c.ops, 'merchant', 1).map(x => ({ ...x, name: srcName(x.name) })), 5, 'Other income').map(x => ({ ...x, color: C.in, tip: 'Income' }));
   const right = fold(I.totalsBy(c.ops, 'category'), 9, 'Everything else').map(x => ({ ...x, color: C.out, tip: 'Spending', cat: x.folded ? null : x.name }));
   if (net < 0) left.push({ name: 'Drawn from balance', total: -net, color: C.other, tip: 'Shortfall' });
   if (net > 0) right.push({ name: 'Kept', total: net, color: C.kept, tip: 'Not spent' });
@@ -805,6 +807,90 @@ $('bud-clear').addEventListener('click', () => {
   if (confirm('Remove every category budget?')) saveBudgets({});
 });
 
+// ── Income: sources ───────────────────────────────────────────────────────────
+// Every deposit that counts as income, grouped by who paid it. Each source has
+// a type: salary, a side job, people paying you back, interest or other. Types
+// are guessed and yours to change; the Salary & raises tab counts only Salary.
+const KIND_ORDER = ['salary', 'side', 'reimburse', 'interest', 'other'];
+const KIND_COLOR = { salary: C.in, side: '#c98500', reimburse: '#9085e9', interest: '#199e70', other: C.other };
+const KIND_NOTE = {
+  salary: 'your main job',
+  side: 'a second job or gig',
+  reimburse: 'people paying you back',
+  interest: 'from savings',
+  other: 'anything else',
+};
+const srcSaved = () => state.settings.incomeSources || {};
+const srcName = m => srcSaved()[m]?.name || m;
+
+function renderSources(c) {
+  const pay = N.detectPaycheck(SCHED)?.merchant || null;
+  const src = N.bySource(c.ops, srcSaved(), pay);
+  const { totals, months } = N.byKind(src);
+  const prior = c.hasPrior ? N.byKind(N.bySource(c.priorOps, srcSaved(), pay)).totals : {};
+  const total = src.reduce((s, x) => s + x.total, 0);
+  const kinds = KIND_ORDER.filter(k => totals[k] > 0);
+  const vs = c.hasPrior ? `vs prior ${c.days}d` : '';
+  const perMonth = c.days / 30.44;
+
+  const reimb = totals.reimburse || 0;
+  setKpis('src-kpis', [
+    kpiTile({ label: 'All income', value: money0(total), delta: c.hasPrior ? relDelta(total, Object.values(prior).reduce((a, b) => a + b, 0), true) : null,
+      sub: reimb > 0 ? `${money0(total - reimb)} without reimbursements` : vs }),
+    ...kinds.map(k => kpiTile({ label: N.KINDS[k], value: money0(totals[k]),
+      delta: c.hasPrior ? relDelta(totals[k], prior[k], k !== 'reimburse') : null,
+      sub: `${pct(totals[k] / total)} · ${money0(totals[k] / perMonth)}/mo`,
+      spark: `<div class="meter" aria-hidden="true"><div style="width:${(totals[k] / total * 100).toFixed(1)}%;background:${KIND_COLOR[k]}"></div></div>` })),
+  ]);
+
+  // Stacked by type, a bar a month.
+  $('src-chart-meta').textContent = `${src.length} source${src.length === 1 ? '' : 's'} · ${money0(total / perMonth)} a month on average`;
+  $('src-legend').innerHTML = kinds.map(k => `<span><i style="background:${KIND_COLOR[k]}"></i>${N.KINDS[k]}</span>`).join('');
+  chart('src-chart', {
+    type: 'bar',
+    data: { labels: months.map(m => monthLabel(m.ym)), datasets: kinds.map(k => ({
+      label: N.KINDS[k], data: months.map(m => A.round2(m[k] || 0)), backgroundColor: KIND_COLOR[k], borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
+    options: { ...hoverLine,
+      plugins: { legend: { display: false }, tooltip: { itemSort: (a, b) => b.datasetIndex - a.datasetIndex, filter: x => x.parsed.y > 0,
+        callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}`, footer: items => `Total  ${money(items.reduce((s, x) => s + x.parsed.y, 0))}` } } },
+      scales: { x: { ...xPlain(), stacked: true }, y: { ...yMoney, stacked: true } } },
+  });
+
+  // One row a source, grouped by type.
+  const rows = [...src].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.total - a.total);
+  const kindSelect = x => `<select class="select src-kind" data-src="${esc(x.merchant)}" aria-label="Type of ${esc(x.name)}">${KIND_ORDER.map(k =>
+    `<option value="${k}"${k === x.kind ? ' selected' : ''}>${N.KINDS[k]}</option>`).join('')}</select>`;
+  $('src-table').innerHTML = rows.length ? `<thead><tr><th>Source</th><th>Type</th><th class="num">Total</th><th class="num col-hide-sm">Share</th><th class="num col-hide-sm">Per month</th><th class="num col-hide-sm">Deposits</th><th class="col-hide-sm">Last</th></tr></thead>
+    <tbody>${rows.map(x => `<tr>
+      <td class="src-cell"><span class="swatch" style="background:${KIND_COLOR[x.kind]}"></span><input class="src-name" type="text" data-src="${esc(x.merchant)}" value="${esc(x.name === x.merchant ? '' : x.name)}" placeholder="${esc(x.merchant)}" aria-label="Name for ${esc(x.merchant)}" spellcheck="false" />
+        ${x.name !== x.merchant ? `<small>${esc(x.merchant)}</small>` : ''}<button class="link-btn src-see" data-txn-search="${esc(x.merchant)}">deposits →</button></td>
+      <td>${kindSelect(x)}${x.set ? '' : '<small class="src-guess">guessed</small>'}</td>
+      <td class="num">${money(x.total)}</td>
+      <td class="num dim col-hide-sm">${pct(x.total / total, 1)}</td>
+      <td class="num dim col-hide-sm">${money0(x.total / perMonth)}</td>
+      <td class="num dim col-hide-sm">${x.count}</td>
+      <td class="dim col-hide-sm">${shortDate(A.localTs(x.last))}</td></tr>`).join('')}</tbody>`
+    : `<tbody><tr><td class="empty">No income in this period.</td></tr></tbody>`;
+
+  $('src-foot').innerHTML = `Types: ${KIND_ORDER.map(k => `<b>${N.KINDS[k]}</b> ${KIND_NOTE[k]}`).join(' · ')}. Guessed types: your main paycheck and other deposits from the same employer are Salary, payroll from anyone else is Side income, Venmo, Zelle, Cash App and PayPal are Reimbursements. Change one and it sticks. Only Salary counts toward the <button class="link-btn" data-goto="salary">Salary &amp; raises</button> tracker. Reimbursements still count as income in the Overview and Cash flow totals.`;
+}
+
+async function saveSource(merchant, patch) {
+  const all = { ...srcSaved() }, cur = { ...(all[merchant] || {}), ...patch };
+  if (!cur.name) delete cur.name;
+  if (!cur.kind) delete cur.kind;
+  if (Object.keys(cur).length) all[merchant] = cur; else delete all[merchant];
+  state.settings.incomeSources = all;
+  await commit();
+  renderActive();
+}
+$('src-table').addEventListener('change', ev => {
+  const k = ev.target.closest('.src-kind'), n = ev.target.closest('.src-name');
+  if (k) saveSource(k.dataset.src, { kind: k.value });
+  else if (n) saveSource(n.dataset.src, { name: n.value.trim() });
+});
+$('src-table').addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.matches('.src-name')) ev.target.blur(); });
+
 // ── Income ────────────────────────────────────────────────────────────────────
 // A salary tracker and a "what if". The pay you enter is turned into a year of
 // take-home with the federal and Virginia rules in tax.js; your real deposits
@@ -845,7 +931,7 @@ function renderIncome(c) {
   fill('inc-save-share', cfg.saveShare ?? 100);
   $('inc-net-note').innerHTML = Number(cfg.netPay) > 0
     ? `Entered by hand.${pay ? ` Your deposits from ${esc(pay.merchant)} are running at ${money(pay.amount)}. <button class="link-btn" id="inc-net-auto">Use those instead</button>` : ''}`
-    : pay ? `Read from your deposits: ${esc(pay.merchant)}, ${money(pay.amount)} ${N.FREQ[pay.freq].label.toLowerCase()}. Type a figure to override it.`
+    : pay ? `Read from your deposits: ${esc(srcName(pay.merchant))}, ${money(pay.amount)} ${N.FREQ[pay.freq].label.toLowerCase()}. Type a figure to override it.`
       + (pay.freq !== cfg.freq ? ` Those deposits look ${N.FREQ[pay.freq].label.toLowerCase()}, not ${freq.label.toLowerCase()}. <button class="link-btn" id="inc-freq-fix" data-freq="${pay.freq}">Switch</button>` : '')
     : 'Enter what one paycheck deposits and your tax and deduction rates are backed out of it. Without it, the figures are a plain estimate.';
   $('inc-foot').textContent = `Estimates for tax year ${T.TAX_YEAR}: federal brackets and standard deduction, Social Security and Medicare, and Virginia's rates, standard deduction and personal exemption. Credits, itemized deductions and other income are not modelled. A bonus is usually withheld at a flat rate on the day and squared up when you file; the figures here are what it adds to the year. Not tax advice.`;
@@ -872,7 +958,9 @@ function renderIncome(c) {
   // Deposits against the plan, for the year the data ends in.
   const through = isoLocal(DATA_LAST), year = Number(through.slice(0, 4));
   const dates = N.payDates(cfg.freq, year, pay?.lastIso);
-  const tr = N.tracker({ year, dates, netPay: now.per.net, bonusNet: now.bonus.net, bonusMonth: cfg.bonusMonth || 3, txns: c.allOps, through });
+  const salarySrc = N.bySource(c.allOps, state.settings.incomeSources, pay?.merchant).filter(x => x.kind === 'salary');
+  const isPay = new Set(salarySrc.map(x => x.merchant));
+  const tr = N.tracker({ year, dates, netPay: now.per.net, bonusNet: now.bonus.net, bonusMonth: cfg.bonusMonth || 3, txns: c.allOps, through, isSalary: t => isPay.has(t.merchant) });
   const gap = tr.actual - tr.expectedToDate;
 
   const y = now.full;
@@ -990,12 +1078,12 @@ function renderIncome(c) {
   const extra = bm ? bm.actual - bm.paychecks * now.per.net : 0;
   $('inc-year-sum').innerHTML = `
     <div class="sum-row"><span>Plan through ${shortDate(DATA_LAST)}</span><span class="amt">${money(tr.expectedToDate)}</span></div>
-    <div class="sum-row"><span>Received (deposits filed as Income)</span><span class="amt">${money(tr.actual)}</span></div>
+    <div class="sum-row"><span>Received from ${salarySrc.length ? esc(salarySrc.slice(0, 2).map(x => x.name).join(', ')) + (salarySrc.length > 2 ? ` +${salarySrc.length - 2}` : '') : 'salary sources'}</span><span class="amt">${money(tr.actual)}</span></div>
     <div class="sum-row total"><span>${gap >= 0 ? 'Ahead of plan' : 'Behind plan'}</span><span class="amt ${gap >= 0 ? 'pos' : 'neg'}">${signed(gap)}</span></div>
     <div class="sum-row"><span>Next payday</span><span class="amt">${tr.next ? shortDate(A.localTs(tr.next)) : `${year + 1}`}</span></div>
     ${now.bonusGross > 0 ? `<div class="sum-row"><span>${month} bonus</span><span class="amt">${money0(now.bonus.net)} planned${lastMonth >= (cfg.bonusMonth || 3) ? ` · ${extra > 1 ? `${money0(extra)} arrived beyond paychecks` : 'none seen in deposits'}` : ''}</span></div>` : ''}
     <div class="sum-row"><span>Plan for all of ${year}</span><span class="amt">${money(tr.expected)}</span></div>
-    <p class="note" style="margin:10px 0 0">The plan is today's take-home on every payday of ${year}. If your pay changed during the year, the months before the change will sit above or below it.</p>`;
+    <p class="note" style="margin:10px 0 0">The plan is today's take-home on every payday of ${year}. If your pay changed during the year, the months before the change will sit above or below it. Received counts only sources marked Salary on the <button class="link-btn" data-goto="income">Sources</button> tab; side income and reimbursements are left out.</p>`;
 
   // ── Virginia ──
   const va = T.virginiaBands(y.vaTaxable), vaThen = T.virginiaBands(t.vaTaxable);
@@ -1035,7 +1123,7 @@ async function saveIncome(cfg) {
   await commit();
   renderIncome(CTX);
 }
-const incomeView = document.querySelector('.view[data-view="income"]');
+const incomeView = document.querySelector('.view[data-view="salary"]');
 incomeView.addEventListener('input', ev => {
   if (!ev.target.matches('input, select')) return;
   if (ev.target.dataset.raise) raiseMode = ev.target.dataset.raise;

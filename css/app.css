@@ -678,3 +678,31 @@ tr.lapsed td { color: var(--ink3); }
   .view[data-view="income"] .data td:first-child { white-space: normal; }
   .view[data-view="income"] .data th, .view[data-view="income"] .data td { padding-left: 8px; padding-right: 8px; }
 }
+
+/* ── Menu groups ── */
+.nav-group { padding: 12px 16px 4px; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink3); opacity: 0.75; }
+.nav-group::before { content: '// '; color: var(--accent); }
+.app.rail .nav-group { height: 1px; padding: 0; margin: 8px 10px; background: var(--line); font-size: 0; }
+.app.rail .nav-group::before { content: none; }
+
+/* ── Income sources ── */
+.src-table td { vertical-align: middle; }
+.src-table td.src-cell { text-transform: none; letter-spacing: 0; white-space: normal; }
+.src-table .src-name { width: min(260px, 100%); height: 26px; background: transparent; border-color: transparent; text-transform: uppercase; letter-spacing: 0.03em; }
+.src-table .src-name:hover { border-color: var(--line-strong); }
+.src-name::placeholder { color: var(--ink); }
+.src-cell small { display: block; margin: 2px 0 0 16px; }
+.src-see { margin-left: 16px; font-size: 10.5px; color: var(--ink3); }
+.src-kind { height: 26px; }
+.src-guess { margin-left: 8px; color: var(--ink3); }
+@media (max-width: 640px) {
+  .src-guess { display: none; }
+  .src-table thead { display: none; }
+  .src-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line); }
+  .src-table tbody td { border-bottom: 0; }
+  .src-table td.src-cell { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; padding-bottom: 0; }
+  .src-table td.src-cell .src-name { flex: 1; width: auto; }
+  .src-cell small { flex-basis: 100%; }
+  .src-table .src-kind { width: 100%; }
+}
+.src-see { white-space: nowrap; }

@@ -132,7 +132,36 @@ assert.equal(pay.amount, 3010);
 
 const through = txns[0].date_iso;
 const dates = N.payDates('biweekly', 2026, pay.lastIso);
-const tr = N.tracker({ year: 2026, dates, netPay: 3010, bonusNet: now.bonus.net, bonusMonth: 3, txns: ops, through });
+// ── Income sources ──
+// The demo has a paycheck, a bonus run from the same employer, a coaching gig
+// paid through payroll, Venmo paybacks and savings interest.
+const sources = N.bySource(ops, {}, pay.merchant);
+const kindOf = Object.fromEntries(sources.map(x => [x.merchant, x.kind]));
+assert.equal(kindOf['ACME CORP PAYROLL'], 'salary');
+assert.equal(kindOf['ACME CORP BONUS PAYROLL'], 'salary', 'same employer: salary');
+assert.equal(kindOf['RIVERSIDE SWIM CLUB PAYROLL'], 'side', 'another employer: a second job');
+assert.equal(kindOf['VENMO CASHOUT'], 'reimburse');
+assert.equal(kindOf['Monthly Interest Paid'], 'interest');
+close(sources.reduce((n, x) => n + x.total, 0), I.summarize(ops).income, 'sources add up to income');
+const kinds = N.byKind(sources);
+close(Object.values(kinds.totals).reduce((a, b) => a + b, 0), I.summarize(ops).income, 'kinds add up to income');
+close(kinds.months.reduce((n, m) => n + Object.entries(m).filter(([k]) => k !== 'ym').reduce((a, [, v]) => a + v, 0), 0), I.summarize(ops).income, 'months add up to income');
+// Your own choices win over the guess, and a name replaces the bank's text.
+const mine = N.bySource(ops, { 'VENMO CASHOUT': { kind: 'side', name: 'Venmo' }, 'RIVERSIDE SWIM CLUB PAYROLL': { name: 'Coaching' } }, pay.merchant);
+const venmo = mine.find(x => x.merchant === 'VENMO CASHOUT'), coach = mine.find(x => x.merchant === 'RIVERSIDE SWIM CLUB PAYROLL');
+assert.ok(venmo.kind === 'side' && venmo.set && venmo.name === 'Venmo');
+assert.ok(coach.kind === 'side' && !coach.set && coach.name === 'Coaching');
+assert.equal(N.sourceInfo('X', 'Income', { X: { kind: 'bogus' } }).kind, 'other', 'an unknown kind falls back to the guess');
+// Without a known paycheck, payroll is salary.
+assert.equal(N.guessKind('RIVERSIDE SWIM CLUB PAYROLL', 'Income', null), 'salary');
+assert.equal(N.guessKind('FEDERAL HOME LOAN MORTGAGE CORP', 'Income', 'FEDERAL HOME LOAN MORTGAGE'), 'salary');
+assert.equal(N.guessKind('Zelle deposit from Sam', 'Income', 'ACME'), 'reimburse');
+
+// The salary tracker counts salary sources only.
+const salaryOf = new Set(sources.filter(x => x.kind === 'salary').map(x => x.merchant));
+const tr = N.tracker({ year: 2026, dates, netPay: 3010, bonusNet: now.bonus.net, bonusMonth: 3, txns: ops, through, isSalary: t => salaryOf.has(t.merchant) });
+const all = N.tracker({ year: 2026, dates, netPay: 3010, bonusNet: now.bonus.net, bonusMonth: 3, txns: ops, through });
+assert.ok(all.actual > tr.actual + 1000, 'coaching and Venmo would otherwise count as pay');
 assert.equal(tr.months.length, 12);
 assert.equal(tr.months.reduce((n, mo) => n + mo.paychecks, 0), dates.length);
 close(tr.expected, dates.length * 3010 + now.bonus.net, 'expected for the year');

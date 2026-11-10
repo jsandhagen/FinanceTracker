@@ -48,6 +48,10 @@ export function demoFiles(today = new Date(), months = 14) {
       chkRow(d, 'Withdrawal to 360 Performance Savings XXXXXXX5678', 450, false);
       savRow(d, 'Deposit from 360 Checking XXXXXXX1234', 450);
     }
+    // A coaching gig paid twice a month, March to October.
+    if ((dom === 1 || dom === 16) && d.getMonth() >= 2 && d.getMonth() <= 9) chkRow(d, 'RIVERSIDE SWIM CLUB PAYROLL', 340, true);
+    // Friends paying back their share of dinners and tickets.
+    if (r() < 0.04) chkRow(d, 'VENMO CASHOUT', between(18, 95), true);
     if (d.getMonth() === 2 && dom === 13) chkRow(d, 'ACME CORP BONUS PAYROLL', 5200, true); // the yearly bonus
     if (dom === 1) { chkRow(d, 'RENT PAYMENT PORTAL', 1725, false); savRow(d, 'Monthly Interest Paid', Math.round(sav * 0.0031 * 100) / 100); }
     if (dom === 5) chkRow(d, 'GEICO INS PREM', 128.4, false);
