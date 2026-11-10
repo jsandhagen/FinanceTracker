@@ -24,7 +24,7 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   date) and the Transactions ledger (search, sort, filter, export to CSV).
 - **Fast to get around.** `Ctrl`/`⌘` + `K` opens a command palette for views, periods,
   categories and merchants; `1`–`6` switch views. Tap any transaction for its detail and the
-  merchant's history.
+  merchant's history. The side rail collapses to icons.
 - **Try it first.** "Explore with demo data" on the first screen loads synthetic accounts.
   Nothing from the demo is saved.
 - **Your data stays on your device.** CSVs are read in the browser and saved in its local

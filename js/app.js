@@ -50,11 +50,12 @@ const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLoca
 const C = {
   in: '#3987e5', out: '#d95926', kept: '#199e70',
   ink: '#f6f7f9', ink2: '#abb3bf', ink3: '#8f99a8',
-  grid: 'rgba(255,255,255,0.06)', surface: '#1c2127', other: '#738091',
+  grid: 'rgba(255,255,255,0.07)', surface: '#13171c', other: '#738091',
 };
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'];
 const HEAT = ['#184f95', '#256abf', '#3987e5', '#86b6ef'];
-const MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace";
+const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+const ZERO = '#1a1f26'; // an empty heatmap day
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let state;            // what storage.js holds
@@ -102,10 +103,22 @@ const crosshair = {
     if (!act.length) return;
     const x = act[0].element.x, { top, bottom } = c.chartArea, g = c.ctx;
     g.save();
-    g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 1;
+    g.strokeStyle = 'rgba(255,255,255,0.3)'; g.lineWidth = 1; g.setLineDash([3, 3]);
     g.beginPath(); g.moveTo(x, top); g.lineTo(x, bottom); g.stroke();
     g.restore();
   },
+};
+
+// A soft glow under any line marked `glow`, so the lead series lifts off the grid.
+const glow = {
+  id: 'glow',
+  beforeDatasetDraw(c, args) {
+    const ds = c.data.datasets[args.index];
+    if (!ds.glow) return;
+    c.ctx.save();
+    c.ctx.shadowColor = ds.borderColor; c.ctx.shadowBlur = 12;
+  },
+  afterDatasetDraw(c, args) { if (c.data.datasets[args.index].glow) c.ctx.restore(); },
 };
 
 function initCharts() {
@@ -114,21 +127,22 @@ function initCharts() {
   const d = Chart.defaults;
   d.color = C.ink3;
   d.borderColor = C.grid;
-  d.font.family = "system-ui, -apple-system, 'Segoe UI', sans-serif";
-  d.font.size = 11;
+  d.font.family = MONO;
+  d.font.size = 10;
   d.maintainAspectRatio = false;
   d.animation.duration = 250;
   d.plugins.legend.labels.boxWidth = 10;
   d.plugins.legend.labels.boxHeight = 2;
   d.plugins.legend.labels.padding = 14;
   d.plugins.legend.labels.color = C.ink2;
+  d.plugins.legend.labels.font = { family: "'Inter', system-ui, sans-serif", size: 11 };
   d.plugins.legend.align = 'start';
   Object.assign(d.plugins.tooltip, {
-    backgroundColor: '#111418', borderColor: '#404854', borderWidth: 1, cornerRadius: 2, padding: 8,
+    backgroundColor: 'rgba(8,10,13,0.94)', borderColor: '#323a45', borderWidth: 1, cornerRadius: 2, padding: 9,
     titleColor: C.ink2, bodyColor: C.ink, boxWidth: 8, boxHeight: 8, boxPadding: 4,
-    titleFont: { size: 11, weight: '600' }, bodyFont: { family: MONO, size: 11 },
+    titleFont: { family: MONO, size: 10, weight: '500' }, bodyFont: { family: MONO, size: 11 }, footerFont: { family: MONO, size: 11 },
   });
-  Chart.register(crosshair);
+  Chart.register(crosshair, glow);
 }
 
 function chart(id, cfg) {
@@ -136,8 +150,8 @@ function chart(id, cfg) {
   charts[id] = new Chart($(id), cfg);
   return charts[id];
 }
-const yMoney = { ticks: { callback: v => moneyK(v), font: { family: MONO, size: 10 } }, grid: { color: C.grid }, border: { display: false } };
-const xPlain = extra => ({ grid: { display: false }, border: { color: '#404854' }, ticks: { maxRotation: 0, autoSkipPadding: 12, ...extra } });
+const yMoney = { ticks: { callback: v => moneyK(v), padding: 8 }, grid: { color: C.grid }, border: { display: false, dash: [2, 4] } };
+const xPlain = extra => ({ grid: { display: false }, border: { color: '#323a45' }, ticks: { maxRotation: 0, autoSkipPadding: 12, ...extra } });
 const hoverLine = { interaction: { mode: 'index', intersect: false } };
 
 // Tiny inline charts for the stat tiles.
@@ -162,9 +176,9 @@ function sparkLine(arr, color) {
 const tipEl = $('tip');
 function hideTip() { tipEl.classList.remove('show'); }
 document.addEventListener('pointerover', ev => {
-  const t = ev.target.closest?.('[data-tip]');
+  const t = ev.target.closest?.('[data-tip], .app.rail [data-rail-tip]');
   if (!t) { hideTip(); return; }
-  const [title, value] = t.dataset.tip.split('|');
+  const [title, value] = (t.dataset.tip || t.dataset.railTip).split('|');
   tipEl.innerHTML = `<div class="tip-t">${esc(title)}</div>${value ? `<div class="tip-v">${esc(value)}</div>` : ''}`;
   tipEl.classList.add('show');
 });
@@ -313,6 +327,10 @@ function deltaHtml(delta) {
   const flat = delta.good == null;
   return `<span class="delta ${flat ? 'flat' : delta.good ? 'good' : 'bad'}">${flat ? '=' : delta.v > 0 ? '▲' : '▼'} ${delta.text}</span>`;
 }
+function setKpis(id, tiles) {
+  $(id).style.setProperty('--n', tiles.length);
+  $(id).innerHTML = tiles.join('');
+}
 function relDelta(now, was, upIsGood) {
   if (!was) return null;
   const v = (now - was) / Math.abs(was), flat = Math.abs(v) < 0.0005;
@@ -345,17 +363,17 @@ function renderOverview(c) {
       spark: `<div class="meter" aria-hidden="true"><div style="width:${Math.max(0, Math.min(100, r * 100)).toFixed(1)}%"></div></div>` }));
   }
   if (bal.length <= 1) tiles.push(kpiTile({ label: 'Transactions', value: cur.count.toLocaleString(), sub: `${moneyK(cur.xfrOut)} in transfers excluded` }));
-  $('kpi-row').innerHTML = tiles.join('');
+  setKpis('kpi-row', tiles);
 
   if (bal.length > 1) {
     const g = $('balance-chart').getContext('2d').createLinearGradient(0, 0, 0, 260);
-    g.addColorStop(0, 'rgba(57,135,229,0.28)'); g.addColorStop(1, 'rgba(57,135,229,0)');
+    g.addColorStop(0, 'rgba(57,135,229,0.32)'); g.addColorStop(0.7, 'rgba(57,135,229,0.04)'); g.addColorStop(1, 'rgba(57,135,229,0)');
     chart('balance-chart', {
       type: 'line',
       data: { labels: bal.map(d => A.fmtDate(d.date)), datasets: [
-        { label: 'Net worth', data: bal.map(d => d.net), borderColor: C.in, backgroundColor: g, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.15, fill: true },
-        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.kept, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [4, 3] },
-        { label: 'Card balance', data: bal.map(d => d.cc_outstanding), borderColor: C.out, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [4, 3] },
+        { label: 'Net worth', data: bal.map(d => d.net), borderColor: '#5aa2f5', backgroundColor: g, borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4, tension: 0.15, fill: true, glow: true },
+        { label: 'Bank balance', data: bal.map(d => d.total_bank), borderColor: C.kept, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [3, 3] },
+        { label: 'Card balance', data: bal.map(d => d.cc_outstanding), borderColor: C.out, borderWidth: 1, pointRadius: 0, pointHoverRadius: 3, tension: 0.15, borderDash: [3, 3] },
       ] },
       options: { ...hoverLine,
         plugins: { crosshair: { on: true }, tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -375,8 +393,8 @@ function renderOverview(c) {
   chart('pace-chart', {
     type: 'line',
     data: { labels: Array.from({ length: n }, (_, i) => i + 1), datasets: [
-      { label: monthName(p.ym), data: p.cur, borderColor: C.in, backgroundColor: 'rgba(57,135,229,0.14)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true, stepped: false },
-      ...(p.hasPrev ? [{ label: monthName(p.pm), data: p.prev, borderColor: C.ink3, borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, pointHoverRadius: 3 }] : []),
+      { label: monthName(p.ym), data: p.cur, borderColor: '#5aa2f5', backgroundColor: 'rgba(57,135,229,0.12)', borderWidth: 1.75, pointRadius: 0, pointHoverRadius: 4, fill: true, glow: true },
+      ...(p.hasPrev ? [{ label: monthName(p.pm), data: p.prev, borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 3 }] : []),
     ] },
     options: { ...hoverLine,
       plugins: { crosshair: { on: true }, tooltip: { callbacks: { title: x => `Day ${x[0].label}`, label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -387,13 +405,13 @@ function renderOverview(c) {
   chart('monthly-chart', {
     type: 'bar',
     data: { labels: months.map(m => monthLabel(m.ym)), datasets: [
-      { label: 'Net', type: 'line', data: months.map(m => A.round2(m.net)), borderColor: C.ink, backgroundColor: C.ink, borderWidth: 1.5, pointRadius: 3, pointHoverRadius: 5, pointBorderColor: C.surface, pointBorderWidth: 2, tension: 0 },
-      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: C.in, borderRadius: 2, maxBarThickness: 34 },
-      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: C.out, borderRadius: 2, maxBarThickness: 34 },
+      { label: 'Net', type: 'line', data: months.map(m => A.round2(m.net)), borderColor: C.ink, backgroundColor: C.ink, borderWidth: 1.25, pointRadius: 2.5, pointHoverRadius: 4, pointBorderColor: C.surface, pointBorderWidth: 2, tension: 0 },
+      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: C.in, borderRadius: 1, maxBarThickness: 22 },
+      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: C.out, borderRadius: 1, maxBarThickness: 22 },
     ] },
     options: { ...hoverLine,
       plugins: { tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
-      scales: { x: xPlain(), y: yMoney }, datasets: { bar: { categoryPercentage: 0.7, barPercentage: 0.9 } } },
+      scales: { x: xPlain(), y: yMoney }, datasets: { bar: { categoryPercentage: 0.6, barPercentage: 0.82 } } },
   });
 
   const cats = I.totalsBy(c.ops, 'category');
@@ -507,7 +525,7 @@ function renderSankey(c) {
 
   const total = Math.max(income, expense);
   const W = Math.max(300, el.clientWidth), narrow = W < 560;
-  const gap = 14, nodeW = 8, rows = Math.max(left.length, right.length);
+  const gap = 14, nodeW = 4, rows = Math.max(left.length, right.length);
   const H = Math.max(280, rows * 34);
   const scale = (H - gap * (rows - 1)) / total;
   const place = (nodes, x) => {
@@ -517,14 +535,18 @@ function renderSankey(c) {
   place(left, 0); place(right, W - nodeW);
   const mid = { x: W / 2 - nodeW / 2, y: (H - total * scale) / 2, h: total * scale };
 
-  const ribbon = (x0, y0, x1, y1, h, color, tip) => {
-    const mx = (x0 + x1) / 2;
+  let defs = '', gid = 0;
+  const ribbon = (x0, y0, x1, y1, h, color, tip, fromLeft) => {
+    const mx = (x0 + x1) / 2, id = `skg${gid++}`;
+    // Brightest at the named end, fading toward the middle bar.
+    defs += `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${x0}" x2="${x1}" y1="0" y2="0"><stop offset="0" stop-color="${color}" stop-opacity="${fromLeft ? 0.6 : 0.16}"/><stop offset="1" stop-color="${color}" stop-opacity="${fromLeft ? 0.16 : 0.6}"/></linearGradient>`;
+    color = `url(#${id})`;
     return `<path class="flow" d="M${x0},${y0}C${mx},${y0} ${mx},${y1} ${x1},${y1}L${x1},${y1 + h}C${mx},${y1 + h} ${mx},${y0 + h} ${x0},${y0 + h}Z" fill="${color}" data-tip="${esc(tip)}"/>`;
   };
   let svg = '', yl = mid.y, yr = mid.y;
   const label = n => `${n.name}|${money(n.total)} · ${pct(n.total / total, 1)} of ${money0(total)}`;
-  for (const n of left) { svg += ribbon(nodeW, n.y, mid.x, yl, n.h, n.color, label(n)); yl += n.total * scale; }
-  for (const n of right) { svg += ribbon(mid.x + nodeW, yr, n.x, n.y, n.h, n.color, label(n)); yr += n.total * scale; }
+  for (const n of left) { svg += ribbon(nodeW, n.y, mid.x, yl, n.h, n.color, label(n), true); yl += n.total * scale; }
+  for (const n of right) { svg += ribbon(mid.x + nodeW, yr, n.x, n.y, n.h, n.color, label(n), false); yr += n.total * scale; }
   const max = narrow ? 14 : 26;
   for (const n of left) {
     svg += `<rect x="0" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
@@ -534,8 +556,8 @@ function renderSankey(c) {
     svg += `<rect x="${n.x}" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
       <text class="sk-label${n.cat ? ' link' : ''}" ${n.cat ? `data-txn-cat="${esc(n.cat)}"` : ''} x="${n.x - 8}" y="${n.y + n.h / 2}" dy="0.35em" text-anchor="end">${esc(clip(n.name, max))} <tspan class="sk-val">${moneyK(n.total)} · ${pct(n.total / total)}</tspan></text>`;
   }
-  svg += `<rect x="${mid.x}" y="${mid.y}" width="${nodeW}" height="${mid.h}" fill="${C.ink2}"/>`;
-  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Income sources flowing into spending categories">${svg}</svg>`;
+  svg += `<rect x="${mid.x}" y="${mid.y}" width="${nodeW}" height="${mid.h}" fill="${C.ink}"/>`;
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Income sources flowing into spending categories"><defs>${defs}</defs>${svg}</svg>`;
 }
 
 // Average month: what each category takes out of a month's income.
@@ -627,7 +649,7 @@ function renderSpending(c) {
   chart('trend-chart', {
     type: 'bar',
     data: { labels: yms.map(m => monthLabel(m)), datasets: series.map(([k, v]) => ({
-      label: k, data: v.map(A.round2), backgroundColor: CAT_SLOT[k] || C.other, borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 36 })) },
+      label: k, data: v.map(A.round2), backgroundColor: CAT_SLOT[k] || C.other, borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
     options: { ...hoverLine,
       plugins: { legend: { display: false }, tooltip: { itemSort: (a, b2) => b2.datasetIndex - a.datasetIndex, filter: x => x.parsed.y > 0,
         callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}`, footer: items => `Total  ${money(items.reduce((s, x) => s + x.parsed.y, 0))}` } } },
@@ -658,12 +680,15 @@ function renderSpending(c) {
 }
 
 // One square per day, a column per week, darker blue for a quiet day and
-// lighter for a heavy one. Shows at most the last year of the period.
+// lighter for a heavy one. Shows at most the last year of the period; a short
+// period is given the weeks before it as dimmed context, so the grid stays wide.
 function renderHeatmap(c) {
   const el = $('heatmap');
-  const daily = I.dailySpend(c.ops);
+  const daily = I.dailySpend(c.allOps);
   const end = A.localTs(isoLocal(Math.min(c.e, DATA_MAX)));
-  let start = Math.max(A.localTs(isoLocal(c.s)), end - 370 * DAY);
+  const from = Math.max(A.localTs(isoLocal(c.s)), end - 370 * DAY);  // first day of the period shown
+  const start = Math.max(A.localTs(isoLocal(DATA_MIN)), Math.min(from, end - 26 * 7 * DAY));
+  for (const k of [...daily.keys()]) { const ts = A.localTs(k); if (ts < start || ts > end) daily.delete(k); }
   const vals = [...daily.values()].filter(v => v > 0).sort((a, b) => a - b);
   if (!vals.length) { el.innerHTML = empty('No spending in this period.'); $('heat-meta').textContent = ''; return; }
   const q = f => vals[Math.min(vals.length - 1, Math.floor(vals.length * f))];
@@ -673,25 +698,25 @@ function renderHeatmap(c) {
   const first = new Date(start), padL = 30, padT = 18;
   const gridStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - first.getDay());
   const nWeeks = Math.ceil((end - gridStart.getTime() + DAY) / (7 * DAY));
-  const step = Math.max(16, Math.min(26, Math.floor((el.clientWidth - padL) / nWeeks))), cell = step - 3;
-  let rects = '', labels = '', lastMonth = -1, lastLabelX = -99, weeks = 0, peak = { v: 0, iso: '' }, n = 0;
+  const step = Math.max(16, Math.min(30, Math.floor((el.clientWidth - padL) / nWeeks))), cell = step - 3;
+  let rects = '', labels = '', lastMonth = -1, lastLabelX = -99, weeks = 0, peak = { v: 0, iso: '' }, n = 0, spendDays = 0;
   for (let d = new Date(gridStart), i = 0; d.getTime() <= end; d.setDate(d.getDate() + 1), i++) {
     const w = Math.floor(i / 7), dow = i % 7, ts = d.getTime();
     weeks = w + 1;
     if (ts < start) continue;
     const iso = isoLocal(ts), v = daily.get(iso) || 0, x = padL + w * step;
-    n++;
-    if (v > peak.v) peak = { v, iso };
+    const inPeriod = ts >= from;
+    if (inPeriod) { n++; if (v > 0) spendDays++; if (v > peak.v) peak = { v, iso }; }
     if (d.getMonth() !== lastMonth) {
       lastMonth = d.getMonth();
       if (x - lastLabelX > 28) { labels += `<text class="hm-label" x="${x}" y="11">${MONTH_ABBR[lastMonth]}</text>`; lastLabelX = x; }
     }
-    rects += `<rect x="${x}" y="${padT + dow * step}" width="${cell}" height="${cell}" rx="2" fill="${v > 0 ? HEAT[level(v)] : '#252a31'}" data-tip="${A.fmtDate(iso)}|${v > 0 ? money(v) : 'No spending'}"/>`;
+    rects += `<rect x="${x}" y="${padT + dow * step}" width="${cell}" height="${cell}" rx="1"${inPeriod ? '' : ' class="out"'} fill="${v > 0 ? HEAT[level(v)] : ZERO}" data-tip="${A.fmtDate(iso)}|${v > 0 ? money(v) : 'No spending'}"/>`;
   }
   ['Mon', 'Wed', 'Fri'].forEach((nme, k) => { labels += `<text class="hm-label" x="0" y="${padT + (1 + k * 2) * step + 10}">${nme}</text>`; });
-  $('heat-meta').textContent = `${n - [...daily.keys()].filter(k => A.localTs(k) >= start).length} no-spend days · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}`;
+  $('heat-meta').textContent = `${n - spendDays} no-spend days` + (peak.v ? ` · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}` : '') + (start < from ? ' · earlier weeks dimmed' : '');
   el.innerHTML = `<div class="hm-scroll"><svg width="${padL + weeks * step}" height="${padT + 7 * step}" role="img" aria-label="Spending per day">${labels}${rects}</svg></div>
-    <div class="legend hm-legend"><span>Less</span><i style="background:#252a31"></i>${HEAT.map(h => `<i style="background:${h}"></i>`).join('')}<span>More</span></div>`;
+    <div class="legend hm-legend"><span>Less</span><i style="background:${ZERO}"></i>${HEAT.map(h => `<i style="background:${h}"></i>`).join('')}<span>More</span></div>`;
   const sc = el.querySelector('.hm-scroll'); sc.scrollLeft = sc.scrollWidth;
 }
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -707,14 +732,14 @@ function renderBudgets(c) {
   const dim = new Date(+budMonth.slice(0, 4), +budMonth.slice(5, 7), 0).getDate();
   const daysLeft = Math.round(dim * (1 - progress));
 
-  $('bud-kpis').innerHTML = [
+  setKpis('bud-kpis', [
     kpiTile({ label: 'Budgeted', value: money0(budgeted), sub: `${set.length} categor${set.length === 1 ? 'y' : 'ies'}` }),
     kpiTile({ label: 'Spent of budget', value: money0(spent), sub: budgeted ? `${pct(spent / budgeted)} used` : '',
       spark: budgeted ? `<div class="meter" aria-hidden="true"><div class="${spent > budgeted ? 'over' : ''}" style="width:${Math.min(100, spent / budgeted * 100).toFixed(1)}%"></div></div>` : '' }),
     kpiTile({ label: budgeted - spent >= 0 ? 'Left to spend' : 'Over budget', value: money0(Math.abs(budgeted - spent)), tone: budgeted - spent >= 0 ? 'pos' : 'neg',
       sub: progress < 1 && daysLeft > 0 && budgeted > spent ? `${money0((budgeted - spent) / daysLeft)}/day for ${daysLeft} days` : progress < 1 ? `${daysLeft} days left` : 'month closed' }),
     kpiTile({ label: 'Outside budgets', value: money0(unbudgeted), sub: 'spent in categories with no limit' }),
-  ].join('');
+  ]);
 
   $('bud-list').innerHTML = rows.length ? rows.map(r => {
     const ratio = r.budget ? r.spent / r.budget : 0, over = r.spent - r.budget;
@@ -764,12 +789,12 @@ function renderRecurring() {
   const live = SCHED.filter(x => x.active);
   const out = live.filter(x => x.s.direction === 'expense'), inc = live.filter(x => x.s.direction === 'income');
   const soon = upcoming(), due = soon.filter(x => x.s.direction === 'expense');
-  $('rec-kpis').innerHTML = [
+  setKpis('rec-kpis', [
     kpiTile({ label: 'Committed per month', value: money0(out.reduce((s, x) => s + x.monthly, 0)), sub: `${out.length} active charges` }),
     kpiTile({ label: 'Recurring income', value: money0(inc.reduce((s, x) => s + x.monthly, 0)), tone: 'pos', sub: `${inc.length} source${inc.length === 1 ? '' : 's'} per month` }),
     kpiTile({ label: 'Due in 30 days', value: money0(due.reduce((s, x) => s + x.s.avg_amount, 0)), sub: `${due.length} charge${due.length === 1 ? '' : 's'} expected` }),
     kpiTile({ label: 'Streams', value: `${live.length}<small> / ${SCHED.length}</small>`, sub: 'active / detected' }),
-  ].join('');
+  ]);
 
   $('streams-list').innerHTML = SCHED.length ? `<thead><tr><th>Merchant</th><th class="col-hide-sm">Category</th><th>Cadence</th><th class="num">Typical</th><th class="num col-hide-sm">Per month</th><th>Next</th></tr></thead>
     <tbody>${[...SCHED].sort((a, b) => b.active - a.active || b.monthly - a.monthly).map(x => {
@@ -1024,6 +1049,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => btn.addEventListener('cl
 function renderStatus() {
   if (!ALL_TXN.length) return;
   const accts = new Set(ALL_TXN.map(t => t.account)).size;
+  $('asof').textContent = `Data as of ${shortDate(DATA_MAX)}`;
   const syncCls = $('sync-dot').className.replace('sync-dot', '').trim();
   const syncTxt = demo ? 'DEMO' : !state.sync ? 'SYNC OFF' : syncCls === 'err' ? 'SYNC FAILED' : syncCls === 'busy' ? 'SYNCING' : 'SYNC ON';
   $('statusbar').innerHTML = `
@@ -1093,6 +1119,17 @@ document.addEventListener('keydown', ev => {
   const v = Object.keys(VIEWS)[Number(ev.key) - 1];
   if (v) setView(v);
 });
+
+// ── Side rail ────────────────────────────────────────────────────────────────
+// Collapses to icons. A convenience kept per browser, so it may be forgotten.
+function setRail(on) {
+  $('dashboard').classList.toggle('rail', on);
+  $('nav-toggle').dataset.railTip = 'Expand';
+  try { localStorage.setItem('ft-rail', on ? '1' : ''); } catch {}
+  setTimeout(() => { if (view === 'cashflow' || view === 'spending') renderActive(); }, 220); // drawn to the new width
+}
+$('nav-toggle').addEventListener('click', () => { hideTip(); setRail(!$('dashboard').classList.contains('rail')); });
+try { if (localStorage.getItem('ft-rail')) $('dashboard').classList.add('rail'); } catch {}
 
 // ── Demo ─────────────────────────────────────────────────────────────────────
 function startDemo() {
@@ -1714,6 +1751,8 @@ async function boot() {
   if (location.hash === '#install') openInstall();
   if (state.sync) { setDot('ok'); lastAutoSync = Date.now(); syncNow({ quiet: true }); }
   registerServiceWorker();
+  // Charts measure their text, so draw them again once the bundled faces are in.
+  document.fonts?.ready.then(() => renderActive());
   try {
     if (sessionStorage.getItem('ft-updated')) {
       sessionStorage.removeItem('ft-updated');

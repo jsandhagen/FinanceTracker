@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>FinanceTracker</title>
   <meta name="description" content="Private spending dashboard for Capital One CSV exports. Runs entirely on your device." />
-  <meta name="theme-color" content="#111418" />
+  <meta name="theme-color" content="#0b0e12" />
   <meta name="color-scheme" content="dark" />
   <meta name="robots" content="noindex" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,6 +15,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" type="image/png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="preload" href="vendor/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="vendor/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/app.css" />
   <script src="vendor/chart.umd.min.js"></script>
 </head>
@@ -33,6 +35,7 @@
     <g id="i-cog" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></g>
     <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></g>
     <g id="i-x" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4 4l8 8M12 4l-8 8"/></g>
+    <g id="i-chevron" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M9 4L5 8l4 4M13 4L9 8l4 4"/></g>
     <g id="i-lock" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="7" width="9" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></g>
   </defs>
 </svg>
@@ -74,12 +77,12 @@
   <aside class="nav">
     <div class="brand-mark"><span class="brand-glyph"></span>FINANCETRACKER</div>
     <nav class="nav-list" id="nav-list">
-      <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
-      <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
-      <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>3</kbd></button>
-      <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span><kbd>4</kbd></button>
-      <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
-      <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
+      <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
+      <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
+      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>3</kbd></button>
+      <button class="nav-item" data-view="budgets" data-rail-tip="Budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span><kbd>4</kbd></button>
+      <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
+      <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
     </nav>
     <div class="nav-section">
       <div class="nav-label">Accounts</div>
@@ -87,17 +90,19 @@
     </div>
     <div class="nav-foot">
       <button class="btn block" id="install-btn" hidden>Install app</button>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Collapse or expand the side rail" data-rail-tip="Expand"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-chevron"/></svg></button>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
       <div class="topbar-row">
-        <h1 class="view-title" id="view-title">Overview</h1>
+        <div class="crumb"><span>Workspace</span><i>/</i><h1 class="view-title" id="view-title">Overview</h1></div>
         <button class="cmd-trigger" id="cmd-open" title="Search views, categories, merchants and actions">
           <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
         </button>
         <div class="topbar-actions">
+          <span class="asof" id="asof"></span>
           <label class="btn primary file-btn" title="Add more CSV exports; duplicates are skipped">
             <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-plus"/></svg><span>Add CSVs</span>
             <input type="file" id="add-input" accept=".csv,text/csv" multiple />
@@ -212,17 +217,17 @@
               <div class="chart-box h300"><canvas id="trend-chart"></canvas></div>
             </div>
           </div>
-          <div class="panel c12">
+          <div class="panel c8">
             <div class="panel-head"><span class="panel-title">Daily spending</span><span class="panel-meta" id="heat-meta"></span></div>
             <div class="panel-body"><div id="heatmap"></div></div>
           </div>
-          <div class="panel c7">
-            <div class="panel-head"><span class="panel-title">Top merchants</span><span class="panel-meta">Tap to see transactions</span></div>
-            <div class="panel-body flush" id="merchant-list"></div>
-          </div>
-          <div class="panel c5">
+          <div class="panel c4">
             <div class="panel-head"><span class="panel-title">By weekday</span><span class="panel-meta">Average per day</span></div>
             <div class="panel-body" id="dow"></div>
+          </div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Top merchants</span><span class="panel-meta">Tap to see transactions</span></div>
+            <div class="panel-body flush cols2" id="merchant-list"></div>
           </div>
         </div>
       </section>
