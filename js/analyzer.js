@@ -17,8 +17,8 @@ export const CC_CATEGORY_MAP = {
   'internet':            'Subscriptions',
   'dining/restaurant':   'Dining',
   'automotive':          'Transportation',
-  'other travel':        'Transportation',
-  'car rental':          'Transportation',
+  'other travel':        'Transportation', // the card's word for rides, tolls, parking
+  'car rental':          'Travel',
   'groceries':           'Groceries',
   'gas/automotive':      'Transportation',
   'health care':         'Health',
@@ -31,6 +31,38 @@ export const CC_CATEGORY_MAP = {
   'airfare':             'Travel',
   'utilities':           'Utilities & Bills',
   'fee/interest charge': 'Fees',
+};
+
+// Trips: lodging, rental cars, flights and the sites that book them. Matched on
+// every row, card and bank, CSV and Plaid, ahead of the category the card or
+// Plaid gave it: a card files a rental car under its own heading, Plaid may
+// file a stay as a general service, and a booking through Capital One Travel
+// is a trip whatever the card calls it. Names that could be something else
+// carry a second word: 'delta air' (Delta Dental), 'alamo rent' (the Alamo
+// Drafthouse), 'avis rent' (Avista, a utility), 'hopper.com' (grasshopper).
+export const TRAVEL_KEYWORDS = [
+  // stays
+  'airbnb', 'vrbo', 'homeaway', 'booking.com', 'hotels.com', 'expedia', 'priceline', 'hotwire',
+  'kayak.com', 'hopper.com', 'travelocity', 'orbitz', 'agoda', 'trivago', 'marriott', 'hilton', 'hyatt',
+  'westin', 'sheraton', 'courtyard by', 'residence inn', 'fairfield inn', 'springhill suites',
+  'holiday inn', 'hampton inn', 'embassy suites', 'doubletree', 'best western', 'wyndham',
+  'la quinta', 'motel 6', 'red roof', 'comfort inn', 'ihg', 'hotel', 'resort', 'hostel',
+  // cars
+  'sixt', 'enterprise rent', 'enterprise car', 'enterprise.com', 'hertz', 'avis rent', 'avis car', 'avis.com', 'avis budget', 'budget rent',
+  'budget car', 'national car', 'alamo rent', 'alamo car', 'goalamo', 'thrifty car', 'dollar rent', 'turo', 'zipcar', 'car rental',
+  'rent-a-car', 'rent a car',
+  // flights and trains
+  'delta air', 'united air', 'united.com', 'american air', 'southwest air', 'jetblue', 'spirit air',
+  'frontier air', 'alaska air', 'allegiant', 'sun country', 'breeze air', 'air canada',
+  'british airways', 'lufthansa', 'air france', 'klm', 'airline', 'airways', 'amtrak',
+  'global entry', 'tsa precheck',
+  // Capital One Travel: flights (COTFLT), hotels (COTHTL), cars and the rest
+  'capital one travel', 'capitalone travel', 'cap one travel', 'c1 travel', 'cotflt', 'cothtl',
+  'cotcar', 'cotrnt',
+];
+export const isTravel = text => {
+  const d = String(text || '').toLowerCase();
+  return TRAVEL_KEYWORDS.some(k => hasKeyword(d, k));
 };
 
 // [keywords, category, is_transfer]
@@ -47,13 +79,17 @@ export const CHECKING_KEYWORD_RULES = [
     'preauthorized withdrawal to first'], 'Loan Payment', true],
   [['venmo payment', 'zelle payment', 'zelle money sent', 'cashapp pay', 'paypal'], 'P2P Transfer', true],
 
+  // Ahead of the rest: 'rent' (Housing) is in "RENT-A-CAR", 'amazon' could be
+  // a booking, and Uber or parking on a trip is still a ride.
+  [TRAVEL_KEYWORDS, 'Travel', false],
+
   [['amazon', 'ebay', 'etsy', 'walmart', 'target', 'best buy', 'costco', 'oregon kicks'], 'Shopping', false],
   [['netflix', 'spotify', 'hulu', 'disney', 'hbo', 'peacock', 'apple',
     'youtube premium', 'steam', 'playstation', 'nintendo', 'xbox',
     'nba league pass', 'porkbun'], 'Subscriptions', false],
   [['uber eats', 'ubereats', 'uber *eats'], 'Dining', false],
   [['uber', 'lyft', 'metro', 'transit', 'parking', 'shell', 'exxon', 'bp ',
-    'chevron', 'sunoco', 'wawa gas', 'marathon', 'sixt'], 'Transportation', false],
+    'chevron', 'sunoco', 'wawa gas', 'marathon'], 'Transportation', false],
   [['safeway', 'kroger', 'whole foods', 'trader joe', 'aldi', 'publix', 'giant',
     'harris teeter', 'wegmans', 'food lion', 'grocery'], 'Groceries', false],
   [['doordash', 'grubhub', 'ubereats', 'seamless', 'chipotle', 'mcdonald',
@@ -357,8 +393,10 @@ function baseCategory(t, ml) {
     // paid, whatever category Plaid gave it. Left as a refund it would come
     // off spending, and a month's card bill would vanish from the totals.
     if (viaPlaid && t.amount > 0 && !TRANSFER_CATEGORIES.has(cat) && CARD_PAYMENT_RE.test(t.description)) cat = 'Credit Card Payment';
-    const up = t.description.toUpperCase();
-    if (up.includes('COTFLT') || up.includes('COTHTL')) cat = 'Travel';
+    // A travel credit (Capital One Travel's yearly one, say) is filed as a
+    // payment by the card, but it is money back on a trip, not the bill paid.
+    const paidBill = TRANSFER_CATEGORIES.has(cat) && (cat !== 'Payment' || CARD_PAYMENT_RE.test(t.description));
+    if (!paidBill && isTravel(t.description)) cat = 'Travel';
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
   }
   const d = t.description.toLowerCase();
@@ -368,6 +406,7 @@ function baseCategory(t, ml) {
       return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat), false];
     }
   }
+
   // The keyword rules above know this bank's own wording (what a card payment
   // or a move to savings looks like); Plaid's category covers the rest.
   if (plaidCat) return [plaidCat, TRANSFER_CATEGORIES.has(plaidCat), false];

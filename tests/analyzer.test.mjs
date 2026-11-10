@@ -78,4 +78,46 @@ assert.equal(kw('Debit Card Purchase - CURRENT BREWING'), 'Other');
 assert.equal(kw('UBER EATS PENDING'), 'Dining');
 assert.equal(kw('UBER TRIP'), 'Transportation');
 assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
+// ── Trips go under Travel ──
+// Whatever the card or Plaid calls it, and wherever it was paid from.
+{
+  const travelCard = A.parseFile(CARD + [
+    '2026-04-01,2026-04-02,4321,AIRBNB * HMABC123,Other Travel,612.40,',
+    '2026-04-02,2026-04-03,4321,SIXT RENT A CAR,Car Rental,233.10,',
+    '2026-04-03,2026-04-04,4321,ENTERPRISE RENT-A-CAR,Automotive,180.00,',
+    '2026-04-04,2026-04-05,4321,CAPITAL ONE TRAVEL,Merchandise,412.00,',
+    '2026-04-05,2026-04-06,4321,COTFLT UNITED AIRLINES,Airfare,288.00,',
+    '2026-04-06,2026-04-07,4321,HERTZ CAR RENTAL,Car Rental,95.00,',
+    '2026-04-07,2026-04-08,4321,EXPEDIA 7234,Other Services,140.00,',
+    '2026-04-08,2026-04-09,4321,CAPITAL ONE TRAVEL CREDIT,Payment/Credit,,300.00',
+    '2026-04-09,2026-04-10,4321,UBER TRIP,Other Travel,22.00,',
+    '2026-04-10,2026-04-11,4321,DELTA DENTAL,Health Care,40.00,',
+    '2026-04-11,2026-04-12,4321,CAPITAL ONE MOBILE PYMT,Payment/Credit,,500.00',
+  ].join('\n')).transactions;
+  const by = Object.fromEntries(cat(travelCard).map(x => [x.description, x]));
+  for (const d of ['AIRBNB * HMABC123', 'SIXT RENT A CAR', 'ENTERPRISE RENT-A-CAR', 'CAPITAL ONE TRAVEL', 'COTFLT UNITED AIRLINES', 'HERTZ CAR RENTAL', 'EXPEDIA 7234'])
+    assert.equal(by[d].category, 'Travel', d);
+  assert.ok(by['CAPITAL ONE TRAVEL CREDIT'].category === 'Travel' && by['CAPITAL ONE TRAVEL CREDIT'].refund, 'a travel credit comes off Travel');
+  assert.equal(by['UBER TRIP'].category, 'Transportation', 'a ride is still a ride');
+  assert.equal(by['DELTA DENTAL'].category, 'Health', 'not every Delta is an airline');
+  assert.ok(by['CAPITAL ONE MOBILE PYMT'].is_transfer, 'the card payment is untouched');
+
+  const travelBank = A.parseFile(BANK + [
+    '1234,Debit Card Purchase - ENTERPRISE RENT-A-CAR 0412,04/12/26,Debit,150.00,850.00',
+    '1234,Debit Card Purchase - AIRBNB HMXYZ,04/11/26,Debit,300.00,1000.00',
+    '1234,Debit Card Purchase - RENT PAYMENT PORTAL,04/01/26,Debit,1500.00,1300.00',
+    '1234,Capital One Mobile Pmt,03/30/26,Debit,200.00,2800.00',
+  ].join('\n')).transactions;
+  const bb = Object.fromEntries(cat(travelBank).map(x => [x.description, x]));
+  assert.equal(bb['Debit Card Purchase - ENTERPRISE RENT-A-CAR 0412'].category, 'Travel', 'rent-a-car is not rent');
+  assert.equal(bb['Debit Card Purchase - AIRBNB HMXYZ'].category, 'Travel');
+  assert.equal(bb['Debit Card Purchase - RENT PAYMENT PORTAL'].category, 'Housing');
+  assert.ok(bb['Capital One Mobile Pmt'].is_transfer, 'the bank side of a card payment is untouched');
+
+  // Plaid rows: the name beats Plaid's own heading.
+  const viaPlaid = [{ id: 'p1', source: 'plaid', kind: 'credit_card', date: '2026-04-01', description: 'AIRBNB', account: 'Credit Card ...9', amount: -500, balance: null, raw_category: 'GENERAL_SERVICES|GENERAL_SERVICES_OTHER_GENERAL_SERVICES' },
+    { id: 'p2', source: 'plaid', kind: 'checking', date: '2026-04-02', description: 'SIXT', account: 'Checking ...1', amount: -120, balance: null, raw_category: 'TRANSPORTATION|TRANSPORTATION_OTHER_TRANSPORTATION' }];
+  assert.deepEqual(cat(viaPlaid).map(x => x.category), ['Travel', 'Travel']);
+}
+
 console.log('analyzer tests passed');
