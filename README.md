@@ -8,9 +8,12 @@
   <a href="https://jsandhagen.github.io/FinanceTracker/#install"><img src="https://img.shields.io/badge/Install%20the%20app-8b5cf6?style=for-the-badge" alt="Install the app" height="40" /></a>
   &nbsp;
   <a href="https://jsandhagen.github.io/FinanceTracker/"><img src="https://img.shields.io/badge/Open%20in%20browser-1e293b?style=for-the-badge" alt="Open in browser" height="40" /></a>
+  &nbsp;
+  <a href="https://github.com/jsandhagen/FinanceTracker/releases/download/android-latest/FinanceTracker.apk"><img src="https://img.shields.io/badge/Android%20app%20(APK)-3ddc84?style=for-the-badge" alt="Download the Android app" height="40" /></a>
 </p>
 
-<p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.</sub></p>
+<p align="center"><sub>Opens the app with install steps for your device: one tap on Android, Windows and Mac (Chrome/Edge), Share → Add to Home Screen on iPhone.<br />
+The <b>Android app</b> is the full app with a direct bank connection: download it on the phone, install it, then add your Plaid keys under <b>Accounts → Bank connection</b>. <a href="android/README.md">Set-up steps</a>.</sub></p>
 
 ---
 
@@ -84,7 +87,16 @@ visited in a while, but not for apps on the home screen.
 ### As a native Android app
 
 There is also an Android build of the same code, for connecting to your bank through Plaid with
-no server in between. It is installed from an APK rather than from the browser:
+no server in between.
+
+1. On the phone, download **[FinanceTracker.apk](https://github.com/jsandhagen/FinanceTracker/releases/download/android-latest/FinanceTracker.apk)** and open it. Android asks once to allow
+   installs from Chrome (or your file manager): allow it, then **Install**.
+2. Open the app, go to **Accounts → Bank connection**, enter your Plaid **client_id** and
+   **secret**, and press **Save**. They are encrypted on the phone and sent only to Plaid.
+3. **Connect a bank.**
+
+Before step 3, the app's package name has to be registered in the Plaid dashboard, and a signing
+key has to be set up once so updates install over the app without losing its data. Both are in
 [android/README.md](android/README.md).
 
 ## Salary & raises
