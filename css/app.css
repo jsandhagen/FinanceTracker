@@ -240,6 +240,12 @@ button.tag:hover::before, button.tag:hover::after { color: #000; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .asof { display: inline-flex; align-items: center; gap: 7px; margin-right: 6px; white-space: nowrap; }
 .asof::before { content: ''; width: 6px; height: 6px; background: var(--pos); animation: pulse 2.4s infinite; }
+button.asof { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+button.asof:hover { color: var(--ink); }
+.asof.stale { color: var(--warn); }
+.asof.stale::before { background: var(--warn); animation: none; }
+.asof.old { color: var(--neg); }
+.asof.old::before { background: var(--neg); animation: none; }
 .sync-dot { width: 6px; height: 6px; background: var(--ink3); display: none; }
 .sync-dot.ok, .sync-dot.busy, .sync-dot.err { display: inline-block; }
 .sync-dot.ok { background: var(--pos); }
@@ -596,3 +602,16 @@ tr.lapsed td { color: var(--ink3); }
   .date-inputs input { width: 150px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ── Refresh sheet ── */
+.drop-zone.slim { margin: 10px 0 0; padding: 22px 14px; }
+.rf-accounts { margin-top: 10px; border: 1px solid var(--line); }
+.rf-acct { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 11.5px; }
+.rf-acct:last-child { border-bottom: 0; }
+.rf-acct > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-acct .dim { color: var(--ink3); }
+.rf-acct small { display: block; color: var(--ink3); font-size: 10.5px; }
+.watch-on { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 11.5px; }
+.watch-on i { width: 6px; height: 6px; background: var(--pos); flex: none; }
+.watch-on.wait i { background: var(--warn); }
+@media (max-width: 640px) { .rf-acct { grid-template-columns: 1fr auto; } .rf-acct > :nth-child(2) { grid-row: 2; grid-column: 1 / -1; color: var(--ink3); } .rf-acct small { display: inline; margin-left: 6px; } }

@@ -65,6 +65,7 @@
         <label class="btn file-btn">Restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" /></label>
       </div>
     </div>
+    <p class="welcome-alt"><button class="link-btn" id="welcome-refresh">Where do I get these files?</button> Steps for Capital One, and a way to import new downloads automatically.</p>
     <p class="welcome-alt" id="welcome-install-row"><button class="link-btn" id="welcome-install">Install as an app</button> for your home screen or desktop</p>
     <p class="privacy-note"><svg viewBox="0 0 16 16" width="12" height="12"><use href="#i-lock"/></svg> Files are read in the browser and saved locally, so next time the dashboard opens straight away.</p>
   </div>
@@ -101,11 +102,10 @@
           <b class="prompt">&gt;</b><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
         </button>
         <div class="topbar-actions">
-          <span class="asof" id="asof"></span>
-          <label class="btn primary file-btn" title="Add more CSV exports; duplicates are skipped">
-            <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-plus"/></svg><span>Add CSVs</span>
-            <input type="file" id="add-input" accept=".csv,text/csv" multiple />
-          </label>
+          <button class="asof" id="asof" title="How fresh the data is. Click to refresh it."></button>
+          <button class="btn primary" id="refresh-open" title="Bring in new Capital One exports; anything already saved is skipped">
+            <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-download"/></svg><span>Refresh data</span>
+          </button>
           <button class="btn" id="open-settings" title="Settings"><span class="sync-dot" id="sync-dot"></span><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-cog"/></svg><span class="btn-label">Settings</span></button>
         </div>
       </div>
@@ -389,6 +389,48 @@
     <div id="cat-pick-tol-range"></div>
     <button id="cat-pick-tol-confirm" class="matchby-btn highlight">Save rule</button>
     <button id="cat-pick-matchby-back2" class="picker-back">← back</button>
+  </div>
+</div>
+
+<!-- ── Refresh data ── -->
+<div class="overlay" id="refresh-overlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rf-title">
+    <div class="sheet-head">
+      <h2 id="rf-title">Refresh data</h2>
+      <button class="icon-btn" id="close-refresh" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="sheet-body">
+
+    <div class="set-sec" id="rf-accounts-sec">
+      <h3>What you have</h3>
+      <div class="rf-accounts" id="rf-accounts"></div>
+    </div>
+
+    <div class="set-sec">
+      <h3>1 · Download from Capital One</h3>
+      <p>Open each account, choose <b>Download Transactions</b>, file type <b>CSV</b>, and a date range that starts on or before the date shown above.
+        Overlap is fine: anything already saved is skipped.</p>
+      <div class="set-row">
+        <a class="btn primary" href="https://myaccounts.capitalone.com/accountSummary" target="_blank" rel="noopener">Open Capital One ↗</a>
+        <span class="set-status" id="rf-hint"></span>
+      </div>
+    </div>
+
+    <div class="set-sec">
+      <h3>2 · Bring the files in</h3>
+      <div class="drop-zone slim" id="rf-drop">
+        <input type="file" id="add-input" accept=".csv,text/csv" multiple />
+        <div class="drop-label">Drop CSV files here, or tap to choose</div>
+        <div class="drop-hint">Several at once is fine. You can also drop them anywhere on the dashboard.</div>
+      </div>
+    </div>
+
+    <div class="set-sec" id="rf-watch-sec">
+      <h3>Or skip step 2: watch a folder</h3>
+      <div id="rf-watch"></div>
+    </div>
+
+    </div>
   </div>
 </div>
 

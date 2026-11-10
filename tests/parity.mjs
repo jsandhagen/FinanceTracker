@@ -45,7 +45,7 @@ check('merchants', [...new Set(txns.map(t => t.merchant))].sort(), [...new Set(p
 
 const strip = s => ({ ...s, transactions: s.transactions.length });
 check('recurring streams', findRecurringStreams(txns).map(strip), py.streams.map(strip));
-check('asset series', buildAssetSeries(txns, 1987.39), py.balance_series);
+check('asset series', buildAssetSeries(txns, 1987.39, { legacy: true }), py.balance_series);
 
 console.log(failures ? `\n${failures} failure(s)` : '\nall parity checks passed');
 process.exit(failures ? 1 : 0);

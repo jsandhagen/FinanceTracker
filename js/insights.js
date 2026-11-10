@@ -13,11 +13,16 @@ const median = a => {
 };
 const round2 = n => Math.round(n * 100) / 100;
 
+// What a transaction adds to income and to spending. A refund is neither money
+// earned nor nothing: it takes that much back off spending.
+export const earned = t => (t.amount > 0 && !t.refund ? t.amount : 0);
+export const spent = t => (t.amount < 0 || t.refund ? -t.amount : 0);
+
 // Transfers move money between your own accounts, so they are in neither total.
 export function summarize(txns) {
   const ops = txns.filter(t => !t.is_transfer);
-  const income = sum(ops.filter(t => t.amount > 0), t => t.amount);
-  const expense = sum(ops.filter(t => t.amount < 0), t => -t.amount);
+  const income = sum(ops, earned);
+  const expense = sum(ops, spent);
   return {
     income, expense, net: income - expense,
     xfrOut: sum(txns.filter(t => t.is_transfer && t.amount < 0), t => -t.amount),
@@ -32,24 +37,26 @@ export function monthly(ops) {
     const k = t.date_iso.slice(0, 7);
     if (!map.has(k)) map.set(k, { ym: k, inc: 0, exp: 0 });
     const m = map.get(k);
-    if (t.amount > 0) m.inc += t.amount; else m.exp -= t.amount;
+    m.inc += earned(t); m.exp += spent(t);
   }
   return [...map.values()].sort((a, b) => (a.ym < b.ym ? -1 : 1))
     .map(m => ({ ...m, net: m.inc - m.exp, rate: m.inc > 0 ? (m.inc - m.exp) / m.inc : null }));
 }
 
-// Spending (or income, with dir = 1) grouped by a key, largest first.
+// Spending (or income, with dir = 1) grouped by a key, largest first. Refunds
+// come off their group; a group refunded to nothing or below is left out.
 export function totalsBy(ops, key, dir = -1) {
   const map = new Map();
   for (const t of ops) {
-    if (dir < 0 ? t.amount >= 0 : t.amount <= 0) continue;
+    const v = dir < 0 ? spent(t) : earned(t);
+    if (!v) continue;
     const k = t[key];
     if (!map.has(k)) map.set(k, { name: k, total: 0, count: 0 });
     const r = map.get(k);
-    r.total += Math.abs(t.amount);
-    r.count++;
+    r.total += v;
+    if (v > 0) r.count++;
   }
-  return [...map.values()].sort((a, b) => b.total - a.total);
+  return [...map.values()].filter(r => r.total > 0.004).sort((a, b) => b.total - a.total);
 }
 
 // n equal slices of [s, e] for the sparklines.
@@ -58,14 +65,14 @@ export function buckets(ops, s, e, n = 24) {
   const span = Math.max(1, e - s);
   for (const t of ops) {
     const i = Math.min(n - 1, Math.max(0, Math.floor((t.ts - s) / span * n)));
-    if (t.amount > 0) inc[i] += t.amount; else exp[i] -= t.amount;
+    inc[i] += earned(t); exp[i] += spent(t);
   }
   return { inc, exp, net: inc.map((v, i) => v - exp[i]) };
 }
 
 export function dailySpend(ops) {
   const map = new Map();
-  for (const t of ops) if (t.amount < 0) map.set(t.date_iso, (map.get(t.date_iso) || 0) - t.amount);
+  for (const t of ops) { const v = spent(t); if (v) map.set(t.date_iso, (map.get(t.date_iso) || 0) + v); }
   return map;
 }
 
@@ -82,9 +89,10 @@ export function spendPace(ops, throughIso) {
   const day = Number(throughIso.slice(8, 10));
   const cur = new Array(daysIn(ym)).fill(0), prev = new Array(daysIn(pm)).fill(0);
   for (const t of ops) {
-    if (t.amount >= 0) continue;
+    const v = spent(t);
+    if (!v) continue;
     const k = t.date_iso.slice(0, 7), d = Number(t.date_iso.slice(8, 10)) - 1;
-    if (k === ym) cur[d] -= t.amount; else if (k === pm) prev[d] -= t.amount;
+    if (k === ym) cur[d] += v; else if (k === pm) prev[d] += v;
   }
   const run = a => { let c = 0; return a.map(v => round2(c += v)); };
   const curRun = run(cur).slice(0, day), prevRun = run(prev);
@@ -139,18 +147,20 @@ export function avgMonthlyByCat(ops, ym, n = 3) {
   const out = {};
   if (!used.length) return out;
   for (const t of ops) {
-    if (t.amount >= 0 || !used.includes(t.date_iso.slice(0, 7))) continue;
-    out[t.category] = (out[t.category] || 0) - t.amount;
+    if (!spent(t) || !used.includes(t.date_iso.slice(0, 7))) continue;
+    out[t.category] = (out[t.category] || 0) + spent(t);
   }
-  for (const k of Object.keys(out)) out[k] = out[k] / used.length;
+  for (const k of Object.keys(out)) { out[k] = out[k] / used.length; if (out[k] <= 0) delete out[k]; }
   return out;
 }
 
+const spentOf = spent;
 export function budgetRows(ops, ym, budgets) {
   const spent = {};
   for (const t of ops) {
-    if (t.amount >= 0 || t.date_iso.slice(0, 7) !== ym) continue;
-    spent[t.category] = (spent[t.category] || 0) - t.amount;
+    if (t.date_iso.slice(0, 7) !== ym) continue;
+    const v = spentOf(t);
+    if (v) spent[t.category] = (spent[t.category] || 0) + v;
   }
   const avg = avgMonthlyByCat(ops, ym);
   const names = new Set([...Object.keys(spent), ...Object.keys(budgets || {}), ...Object.keys(avg)]);
@@ -208,8 +218,11 @@ export function signals({ ops, priorOps, hasPrior, streams, asOf, money }) {
     out.push({ tone: 'info', title: `Largest purchase: ${money(-big.amount)}`, detail: `${big.merchant} on ${big.date_fmt}.`, search: big.merchant });
   }
 
-  const fees = sum(ops.filter(t => t.category === 'Fees' && t.amount < 0), t => -t.amount);
-  if (fees > 0) out.push({ tone: 'warn', title: `${money(fees)} in fees and interest`, detail: 'Charges the bank or card kept for itself.', cat: 'Fees' });
+  const fees = sum(ops.filter(t => t.category === 'Fees'), spent);
+  if (fees > 0.004) out.push({ tone: 'warn', title: `${money(fees)} in fees and interest`, detail: 'Charges the bank or card kept for itself.', cat: 'Fees' });
+
+  const back = sum(ops.filter(t => t.refund), t => t.amount);
+  if (back > 0.004) out.push({ tone: 'info', title: `${money(back)} came back as refunds`, detail: 'Taken off spending in its category, not counted as income.' });
 
   const other = ops.filter(t => t.category === 'Other');
   if (other.length >= 3) out.push({ tone: 'info', title: `${other.length} uncategorized transactions`, detail: `${money(sum(other, t => Math.abs(t.amount)))} sits in Other. Tap a category tag to file it.`, cat: 'Other' });

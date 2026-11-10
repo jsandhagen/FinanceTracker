@@ -31,6 +31,11 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   storage (IndexedDB). Nothing is uploaded anywhere unless you turn on sync.
 - **Upload once, then just add.** New exports are merged in and transactions already saved are
   skipped, so overlapping date ranges are fine.
+- **Refreshing is one click.** The top bar shows how old the data is; **Refresh data** shows how
+  far behind each account is and what date range to export. In Chrome or Edge on a computer the
+  app can watch your downloads folder and import new exports by itself (see below).
+- **Refunds are not income.** Money back on a card comes off spending in its category. Payments
+  to the card and moves between your own accounts count as neither income nor spending.
 - **Rules stick.** Tap a category in the transactions table to recategorize a merchant (or one
   amount, with a tolerance). Rules apply to past and future uploads, and also teach the
   auto-categorizer.
@@ -60,6 +65,26 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 
 Install it rather than only bookmarking it: Safari may clear storage for websites you have not
 visited in a while, but not for apps on the home screen.
+
+## Refreshing your data
+
+Capital One has no way for a personal app to fetch transactions, so the export itself is a click
+on their site. Everything after that click can be automatic:
+
+1. **Refresh data → Choose a folder to watch** (Chrome or Edge on a computer) and pick the folder
+   your downloads are saved to. If the browser refuses the Downloads folder itself, make a folder
+   inside it and save exports there.
+2. From then on: download the CSVs from Capital One, come back to the app. They are already in.
+   The app looks in the folder when it opens, when you return to it, and every 20 seconds while
+   it is on screen. It reads each CSV once and keeps only Capital One exports.
+3. The browser may ask for the folder again on a later visit (the button reads **Reconnect
+   folder**). Choose *Allow on every visit* and it stops asking.
+
+Other ways in: drop files anywhere on the dashboard; on Android, install the app and use
+**Share → FinanceTracker** on a downloaded CSV; on a computer with the app installed,
+**Open with → FinanceTracker**. With sync on, a file imported on one device shows up on the other.
+
+Overlapping date ranges are safe: a transaction already saved is skipped.
 
 ## Sync between phone and computer (optional)
 
@@ -95,6 +120,7 @@ python tests/make_fixtures.py /tmp/fx
 echo '{"merchant": {}, "amount_rules": []}' > /tmp/rules.json
 python tests/run_python.py ../FinanceTracker /tmp/fx /tmp/rules.json /tmp/py.json
 node tests/parity.mjs /tmp/fx /tmp/py.json /tmp/rules.json
+node tests/analyzer.test.mjs
 node tests/sync.test.mjs
 node tests/insights.test.mjs
 ```
