@@ -84,8 +84,13 @@ To cut out the clicking around on Capital One: open an account there, copy the a
 address bar, and save it under **Refresh data → Add link**. Any page of the account will do: the
 app turns it into that account's download page, and each account then has a button that opens it, and **Open all** opens every one in its own tab.
 
-Other ways in: drop files anywhere on the dashboard; on Android, install the app and use
-**Share → FinanceTracker** on a downloaded CSV; on a computer with the app installed,
+All of this lives on the **Accounts** tab (`7`), with each account's balance, how far behind it is,
+and its download link.
+
+**On Android**, Chrome saves downloads in its own private folder, which the app cannot read. Install
+the app, then in Chrome open **⋮ → Downloads**, press and hold the CSV, **Share → FinanceTracker**.
+
+Other ways in: drop files anywhere on the dashboard; on a computer with the app installed,
 **Open with → FinanceTracker**. With sync on, a file imported on one device shows up on the other.
 
 Overlapping date ranges are safe: a transaction already saved is skipped.
