@@ -81,8 +81,8 @@ on their site. Everything after that click can be automatic:
    folder**). Choose *Allow on every visit* and it stops asking.
 
 To cut out the clicking around on Capital One: open an account there, copy the address from the
-address bar, and save it under **Refresh data → Add link**. Each account then has an **Open**
-button that goes straight to its page, and **Open all** opens every one in its own tab.
+address bar, and save it under **Refresh data → Add link**. Any page of the account will do: the
+app turns it into that account's download page, and each account then has a button that opens it, and **Open all** opens every one in its own tab.
 
 Other ways in: drop files anywhere on the dashboard; on Android, install the app and use
 **Share → FinanceTracker** on a downloaded CSV; on a computer with the app installed,

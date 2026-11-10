@@ -32,6 +32,7 @@ jobs:
       - name: Test
         run: |
           node tests/analyzer.test.mjs
+          node tests/links.test.mjs
           node tests/sync.test.mjs
           node tests/insights.test.mjs
           node --check js/app.js

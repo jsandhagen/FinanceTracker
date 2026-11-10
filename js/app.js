@@ -3,6 +3,7 @@ import * as A from './analyzer.js';
 import * as I from './insights.js';
 import * as sync from './sync.js';
 import * as watch from './watch.js';
+import { cleanLink, downloadLink } from './links.js';
 import { demoFiles } from './demo.js';
 import { BUILD } from './version.js';
 
@@ -1359,8 +1360,8 @@ function renderRefresh() {
     if (oldest == null || from < oldest) oldest = from;
     const url = acctLink(acct);
     const action = linkEdit === acct
-      ? `<form class="rf-link-form" data-acct="${esc(acct)}"><input class="set-input" type="text" inputmode="url" placeholder="Paste this account's page address from Capital One" value="${esc(url || '')}" aria-label="Capital One page for ${esc(acct)}" /><button class="btn small primary">Save</button><button type="button" class="btn small" data-link-cancel>Cancel</button></form>`
-      : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
+      ? `<form class="rf-link-form" data-acct="${esc(acct)}"><input class="set-input" type="text" inputmode="url" placeholder="Paste any page address of this account from Capital One" value="${esc(url || '')}" aria-label="Capital One page for ${esc(acct)}" /><button class="btn small primary">Save</button><button type="button" class="btn small" data-link-cancel>Cancel</button></form>`
+      : url ? `<span class="rf-go"><a class="btn small primary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Download ↗</a><button class="link-btn" data-link-edit="${esc(acct)}">edit</button></span>`
       : `<button class="btn small" data-link-edit="${esc(acct)}">Add link</button>`;
     return `<div class="rf-acct"><span>${esc(acct)}</span>
       <span>through ${shortDate(ts)}<small>export from ${shortDate(from)} or earlier</small></span>
@@ -1380,13 +1381,7 @@ function renderRefresh() {
 // It lives in settings, so it syncs. Anything that is not a Capital One https
 // address is refused, here and again when it is read back.
 let linkEdit = null;
-function cleanLink(raw) {
-  try {
-    const u = new URL(String(raw).trim());
-    return u.protocol === 'https:' && /(^|\.)capitalone\.com$/i.test(u.hostname) ? u.href : null;
-  } catch { return null; }
-}
-const acctLink = acct => cleanLink(state.settings.links?.[acct] || '');
+const acctLink = acct => cleanLink(state.settings.links?.[acct] || '');  // read back through the same check
 
 $('rf-accounts').addEventListener('click', ev => {
   const edit = ev.target.closest('[data-link-edit]');
@@ -1397,7 +1392,7 @@ $('rf-accounts').addEventListener('submit', async ev => {
   ev.preventDefault();
   const form = ev.target.closest('.rf-link-form');
   if (!form) return;
-  const raw = form.querySelector('input').value.trim(), url = raw ? cleanLink(raw) : null;
+  const raw = form.querySelector('input').value.trim(), url = raw ? downloadLink(raw) : null;
   if (raw && !url) { toast('That is not a capitalone.com address. Copy it from the address bar while the account is open.', true); return; }
   const links = { ...(state.settings.links || {}) };
   if (url) links[form.dataset.acct] = url; else delete links[form.dataset.acct];
