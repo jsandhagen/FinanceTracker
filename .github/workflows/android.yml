@@ -22,6 +22,7 @@ on:
       - 'package-lock.json'
       - 'capacitor.config.json'
       - 'tools/build-www.mjs'
+      - 'tools/make_icons.py'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -99,6 +100,12 @@ jobs:
           ./gradlew --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/FinanceTracker.apk"
 
+      - name: Which key signed it
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/FinanceTracker.apk" | tee "$RUNNER_TEMP/certs.txt"
+          grep -m1 'SHA-256' "$RUNNER_TEMP/certs.txt" | sed 's/.*: //' > "$RUNNER_TEMP/sha256.txt"
+
       - name: Remove the key file
         if: always()
         run: rm -f "$RUNNER_TEMP/financetracker.keystore"
@@ -131,6 +138,8 @@ jobs:
             else
               echo "Debug build, signed with a key made for this run only. Android will not install a later build over it, and removing an app removes its data. Add the signing secrets before putting real data in the app: see android/README.md."
             fi
+            echo
+            echo "Signing certificate SHA-256: \`$(cat "$RUNNER_TEMP/sha256.txt" 2>/dev/null)\`"
             echo
             echo "Download **FinanceTracker-apk** from the Artifacts section of this run."
           } >> "$GITHUB_STEP_SUMMARY"
