@@ -108,6 +108,46 @@ export function seedExamples() {
   return ex;
 }
 
+// Plaid files every transaction under a "personal finance category": a primary
+// group and a detailed one. Stored as "PRIMARY|DETAILED"; the detailed entry
+// wins where it is listed here.
+export const PLAID_CATEGORY_MAP = {
+  INCOME: 'Income',
+  INCOME_INTEREST_EARNED: 'Interest Income',
+  TRANSFER_IN: 'P2P Transfer',
+  TRANSFER_IN_DEPOSIT: 'Income',
+  TRANSFER_IN_ACCOUNT_TRANSFER: 'Savings Transfer',
+  TRANSFER_IN_SAVINGS: 'Savings Transfer',
+  TRANSFER_OUT: 'P2P Transfer',
+  TRANSFER_OUT_ACCOUNT_TRANSFER: 'Savings Transfer',
+  TRANSFER_OUT_SAVINGS: 'Savings Transfer',
+  LOAN_PAYMENTS: 'Loan Payment',
+  LOAN_PAYMENTS_CREDIT_CARD_PAYMENT: 'Credit Card Payment',
+  LOAN_PAYMENTS_MORTGAGE_PAYMENT: 'Housing',
+  BANK_FEES: 'Fees',
+  ENTERTAINMENT: 'Entertainment',
+  FOOD_AND_DRINK: 'Dining',
+  FOOD_AND_DRINK_GROCERIES: 'Groceries',
+  GENERAL_MERCHANDISE: 'Shopping',
+  HOME_IMPROVEMENT: 'Shopping',
+  MEDICAL: 'Health',
+  PERSONAL_CARE: 'Health',
+  GENERAL_SERVICES: 'Other',
+  GENERAL_SERVICES_INSURANCE: 'Insurance',
+  GENERAL_SERVICES_EDUCATION: 'Education',
+  GENERAL_SERVICES_AUTOMOTIVE: 'Transportation',
+  GOVERNMENT_AND_NON_PROFIT: 'Other',
+  TRANSPORTATION: 'Transportation',
+  TRAVEL: 'Travel',
+  RENT_AND_UTILITIES: 'Utilities & Bills',
+  RENT_AND_UTILITIES_RENT: 'Housing',
+};
+
+export function plaidCategory(raw) {
+  const [primary, detailed] = String(raw || '').split('|');
+  return PLAID_CATEGORY_MAP[detailed] || PLAID_CATEGORY_MAP[primary] || null;
+}
+
 // ── Merchant normalisation ─────────────────────────────────────────────────────
 
 const PREFIX_RE  = /^(withdrawal from|deposit from|withdrawal to|deposit to|transfer to|transfer from)\s+/i;
@@ -265,7 +305,8 @@ export function repairStored(stored) {
   for (let t of stored) {
     if (t.kind === 'checking' && both.has(t.account.slice(-4))) {
       const account = `Savings ...${t.account.slice(-4)}`;
-      t = { ...t, kind: 'savings', account, id: account + t.id.slice(t.account.length) };
+      // A CSV row's id starts with its account name; a Plaid row's id is Plaid's own.
+      t = { ...t, kind: 'savings', account, id: t.source === 'plaid' ? t.id : account + t.id.slice(t.account.length) };
     }
     if (seen.has(t.id)) continue;
     seen.add(t.id);
@@ -305,8 +346,11 @@ export function buildCategorizer(rules, training) {
 // -> [category, is_transfer, guessed]. `guessed` is true when nothing but the
 // similarity matcher chose the category.
 function baseCategory(t, ml) {
+  // A row that came through Plaid carries Plaid's category, not the card's.
+  const viaPlaid = t.source === 'plaid';
+  const plaidCat = viaPlaid ? plaidCategory(t.raw_category) : null;
   if (t.kind === 'credit_card') {
-    let cat = t.raw_category ? categorizeCC(t.raw_category) : 'Other';
+    let cat = viaPlaid ? plaidCat || 'Other' : t.raw_category ? categorizeCC(t.raw_category) : 'Other';
     const up = t.description.toUpperCase();
     if (up.includes('COTFLT') || up.includes('COTHTL')) cat = 'Travel';
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
@@ -318,6 +362,9 @@ function baseCategory(t, ml) {
       return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat), false];
     }
   }
+  // The keyword rules above know this bank's own wording (what a card payment
+  // or a move to savings looks like); Plaid's category covers the rest.
+  if (plaidCat) return [plaidCat, TRANSFER_CATEGORIES.has(plaidCat), false];
   const cat = ml.predict(t.description) || 'Other';
   return [cat, t.kind === 'savings' ? false : TRANSFER_CATEGORIES.has(cat), true];
 }

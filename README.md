@@ -17,13 +17,22 @@
 A private spending dashboard for Capital One CSV exports (360 Checking, 360 Savings, credit card).
 It runs entirely in the browser, installs as an app on a phone or computer, and works offline.
 
-- **Six views, one console.** Overview (net worth, income, spending, savings rate, each against
+- **Seven views, one console.** Overview (net worth, income, spending, savings rate, each against
   the period before), Cash flow (a flow-of-funds diagram and a month-by-month table), Spending
-  (categories, trend, a daily heatmap, merchants, weekdays), Budgets (monthly limits per
-  category with a pace marker), Recurring (detected bills and paychecks with their next expected
-  date) and the Transactions ledger (search, sort, filter, export to CSV).
+  (categories, trend, a daily heatmap, merchants, weekdays, with **Budgets** as its sub-menu:
+  monthly limits per category with a pace marker), Income (a salary tracker and raise "what if",
+  below), Recurring (detected bills and paychecks with their next expected date), the
+  Transactions ledger (search, sort, filter, export to CSV) and Accounts.
+- **Salary tracker and "what if".** Enter your salary, how often you are paid, and your bonus and
+  the month it lands. The Income view works out federal tax, Social Security, Medicare and
+  **Virginia** income tax, then backs your own rates out of the take-home you actually receive
+  (read from your deposits, or typed in): whatever the tax tables do not explain is treated as
+  money taken out before tax. Type a raise, as a percentage, an amount or a new salary, to see
+  what you keep of it, how each tax moves, and what it does to your savings rate.
+- **Optional bank connection through Plaid**, so new transactions arrive without downloading
+  anything. See [server/README.md](server/README.md).
 - **Fast to get around.** `Ctrl`/`⌘` + `K` opens a command palette for views, periods,
-  categories and merchants; `1`–`6` switch views. Tap any transaction for its detail and the
+  categories and merchants; `1`–`7` switch views. Tap any transaction for its detail and the
   merchant's history. The side rail collapses to icons.
 - **Try it first.** "Explore with demo data" on the first screen loads synthetic accounts.
   Nothing from the demo is saved.
@@ -66,10 +75,27 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 Install it rather than only bookmarking it: Safari may clear storage for websites you have not
 visited in a while, but not for apps on the home screen.
 
+## The Income view
+
+The figures are estimates for tax year 2026, built from the federal brackets and standard
+deduction, Social Security and Medicare, and Virginia's rates, standard deduction and personal
+exemption (`js/tax.js`; update that one file each year). Credits, itemized deductions and other
+income are not modelled, which is what calibrating against your real take-home is for:
+
+- If your paycheck is **smaller** than the tables predict, the gap is treated as a share of pay
+  taken out before income tax (a 401(k), health premiums) and is applied to the bonus and to a
+  raise as well.
+- If it is **larger**, nothing is assumed to come out before tax and your income tax is scaled
+  down to match.
+
+A bonus is taxed as what it adds to the year's bill, on top of the salary. Employers usually
+withhold a flat rate on the day and the difference is settled when you file. "This year" compares
+the deposits filed as Income with what the plan expects on each payday.
+
 ## Refreshing your data
 
-Capital One has no way for a personal app to fetch transactions, so the export itself is a click
-on their site. Everything after that click can be automatic:
+The hands-off way is a [bank connection through Plaid](server/README.md). Without one, the export
+is a click on Capital One's site, and everything after that click can be automatic:
 
 1. **Refresh data → Choose a folder to watch** (Chrome or Edge on a computer) and pick the folder
    your downloads are saved to. If the browser refuses the Downloads folder itself, make a folder
@@ -132,6 +158,8 @@ node tests/parity.mjs /tmp/fx /tmp/py.json /tmp/rules.json
 node tests/analyzer.test.mjs
 node tests/sync.test.mjs
 node tests/insights.test.mjs
+node tests/income.test.mjs
+node tests/plaid.test.mjs
 ```
 
 The one deliberate difference from the Python version is the auto-categorizer: scikit-learn's

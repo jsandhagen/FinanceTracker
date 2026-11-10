@@ -27,6 +27,7 @@
     <g id="i-cashflow" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h4c3 0 3 8 6 8h2M2 12h4c3 0 3-8 6-8h2"/></g>
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
+    <g id="i-income" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 13.5h12M3.5 11V8M8 11V5M12.5 11V2.5M10.5 4.5l2-2 2 2"/></g>
     <g id="i-recurring" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M13 6V3M13 6h-3M13 6a5.5 5.5 0 1 0 .5 3.5"/></g>
     <g id="i-transactions" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M5 4h9M5 8h9M5 12h9M2 4h.5M2 8h.5M2 12h.5"/></g>
     <g id="i-search" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></g>
@@ -62,6 +63,7 @@
       </div>
       <div class="welcome-actions">
         <button class="btn" id="welcome-demo">Explore with demo data</button>
+        <button class="btn" id="welcome-bank">Connect a bank</button>
         <button class="btn" id="welcome-sync">Set up sync</button>
         <label class="btn file-btn">Restore a backup<input type="file" accept=".json,application/json" id="welcome-restore" /></label>
       </div>
@@ -81,7 +83,8 @@
       <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
       <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
       <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>3</kbd></button>
-      <button class="nav-item" data-view="budgets" data-rail-tip="Budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span><kbd>4</kbd></button>
+      <button class="nav-item nav-sub" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
+      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>4</kbd></button>
       <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
       <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
       <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>7</kbd></button>
@@ -135,6 +138,14 @@
     </header>
 
     <div class="views" id="views">
+
+      <!-- Spending's sub-menu: shown on the Spending and Budgets views -->
+      <div class="subnav" id="spend-tabs" hidden>
+        <div class="seg">
+          <button data-goto="spending">Breakdown</button>
+          <button data-goto="budgets">Budgets</button>
+        </div>
+      </div>
 
       <!-- Overview -->
       <section class="view" data-view="overview">
@@ -233,7 +244,7 @@
         </div>
       </section>
 
-      <!-- Budgets -->
+      <!-- Budgets (under Spending) -->
       <section class="view" data-view="budgets" hidden>
         <div class="toolbar">
           <span class="filter-label">Month</span>
@@ -247,6 +258,86 @@
           <div class="panel-head"><span class="panel-title">Category budgets</span><span class="panel-meta">Monthly limits, saved with your settings</span></div>
           <div class="panel-body flush" id="bud-list"></div>
         </div>
+      </section>
+
+      <!-- Income: salary, what it comes to after tax, and what a raise would do -->
+      <section class="view" data-view="income" hidden>
+        <div class="kpi-row" id="inc-kpis"></div>
+        <div class="grid">
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">Your pay</span><span class="panel-meta">Saved with your settings</span></div>
+            <div class="panel-body">
+              <form class="inc-form" id="inc-form" autocomplete="off">
+                <label for="inc-salary">Salary, per year</label>
+                <div class="input-affix"><span>$</span><input id="inc-salary" data-inc="salary" type="number" inputmode="decimal" min="0" step="1000" placeholder="e.g. 95000" /></div>
+                <label for="inc-freq">Paid</label>
+                <select id="inc-freq" data-inc="freq" class="select">
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Bi-weekly (every other week)</option>
+                  <option value="semimonthly">Twice a month</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <label for="inc-bonus">Bonus</label>
+                <div class="inc-pair">
+                  <div class="input-affix"><input id="inc-bonus" data-inc="bonus" type="number" inputmode="decimal" min="0" step="any" placeholder="0" /></div>
+                  <select id="inc-bonus-unit" data-inc="bonusUnit" class="select" aria-label="Bonus is an amount or a share of salary">
+                    <option value="usd">dollars</option>
+                    <option value="pct">% of salary</option>
+                  </select>
+                </div>
+                <label for="inc-bonus-month">Bonus paid in</label>
+                <select id="inc-bonus-month" data-inc="bonusMonth" class="select"></select>
+                <label for="inc-filing">Filing status</label>
+                <select id="inc-filing" data-inc="filing" class="select">
+                  <option value="single">Single</option>
+                  <option value="married">Married filing jointly</option>
+                  <option value="hoh">Head of household</option>
+                </select>
+                <label for="inc-net">Take-home, per paycheck</label>
+                <div class="input-affix"><span>$</span><input id="inc-net" data-inc="netPay" type="number" inputmode="decimal" min="0" step="any" placeholder="from deposits" /></div>
+              </form>
+              <div class="note" id="inc-net-note"></div>
+            </div>
+          </div>
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title">Where a paycheck goes</span><span class="panel-meta" id="inc-split-meta"></span></div>
+            <div class="panel-body flush" id="inc-split"></div>
+          </div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">What if: a raise</span><span class="panel-meta" id="inc-raise-meta"></span></div>
+            <div class="panel-body">
+              <div class="inc-raise-row">
+                <span class="filter-label">Raise</span>
+                <div class="input-affix"><input id="inc-raise-pct" data-raise="pct" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise as a percentage" /><span class="suffix">%</span></div>
+                <span class="dim">or</span>
+                <div class="input-affix"><span>$</span><input id="inc-raise-usd" data-raise="usd" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise in dollars a year" /></div>
+                <span class="dim">or new salary</span>
+                <div class="input-affix"><span>$</span><input id="inc-raise-salary" data-raise="salary" type="number" inputmode="decimal" min="0" step="any" aria-label="New salary" /></div>
+                <span class="spacer"></span>
+                <span class="filter-label">Save</span>
+                <div class="input-affix"><input id="inc-save-share" type="number" inputmode="decimal" min="0" max="100" step="5" value="100" aria-label="Share of the extra take-home you would save" /><span class="suffix">%</span></div>
+                <span class="dim">of it</span>
+                <button type="button" class="btn small" id="inc-raise-clear">Clear</button>
+              </div>
+              <div id="inc-raise-bar"></div>
+              <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
+              <div class="note" id="inc-raise-note"></div>
+            </div>
+          </div>
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title">This year</span><span class="panel-meta" id="inc-year-meta"></span></div>
+            <div class="panel-body">
+              <div class="legend" id="inc-year-legend"></div>
+              <div class="chart-box h260"><canvas id="inc-year-chart"></canvas></div>
+              <div id="inc-year-sum"></div>
+            </div>
+          </div>
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">Virginia income tax</span><span class="panel-meta" id="inc-va-meta"></span></div>
+            <div class="panel-body flush" id="inc-va"></div>
+          </div>
+        </div>
+        <p class="inc-foot" id="inc-foot"></p>
       </section>
 
       <!-- Recurring -->
@@ -332,7 +423,7 @@
     <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span></button>
     <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Flow</span></button>
     <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span></button>
-    <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
+    <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
     <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
     <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Ledger</span></button>
     <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
@@ -414,13 +505,18 @@
     <div class="sheet-body" id="refresh-sheet-body">
     <div id="refresh-block">
 
+    <div class="set-sec" id="plaid-sec">
+      <h3>Bank connection</h3>
+      <div id="plaid-body"></div>
+    </div>
+
     <div class="set-sec" id="rf-accounts-sec">
       <h3>Your accounts</h3>
       <div class="rf-accounts" id="rf-accounts"></div>
     </div>
 
     <div class="set-sec">
-      <h3>1 · Download from Capital One</h3>
+      <h3 id="rf-csv-title">1 · Download from Capital One</h3>
       <p>The download form opens on <b>CSV</b> and <b>Last 30 Days</b>. If an account above is less than four weeks behind, that is already right: press <b>Download</b>.
         Otherwise pick a longer Time Period. Overlap is fine: anything already saved is skipped.</p>
       <p id="rf-link-note" style="margin-top:8px">To skip the clicking around: open an account on Capital One, copy the address from the address bar, and save it here with <b>Add link</b>.

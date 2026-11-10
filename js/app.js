@@ -4,6 +4,9 @@ import * as I from './insights.js';
 import * as sync from './sync.js';
 import * as watch from './watch.js';
 import { cleanLink, downloadLink } from './links.js';
+import * as T from './tax.js';
+import * as N from './income.js';
+import * as P from './plaid.js';
 import { demoFiles } from './demo.js';
 import { BUILD } from './version.js';
 
@@ -187,8 +190,10 @@ document.addEventListener('pointermove', ev => {
 document.addEventListener('scroll', hideTip, true);
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
-const RANGE_FREE = new Set(['budgets', 'recurring', 'accounts']); // these keep their own clock
+const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', spending: 'Spending', budgets: 'Budgets', income: 'Income', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
+const PARENT = { budgets: 'spending' };   // Budgets sits under Spending in the menu
+const NAV_KEYS = Object.keys(VIEWS).filter(v => !PARENT[v]); // what the number keys 1-7 open
+const RANGE_FREE = new Set(['budgets', 'income', 'recurring', 'accounts']); // these keep their own clock
 
 function showView() {
   const has = state.transactions.length > 0;
@@ -202,9 +207,19 @@ function showView() {
 function setView(v, { push = true } = {}) {
   if (!VIEWS[v]) return;
   view = v;
+  incDraft = null;
+  const top = PARENT[v] || v;
   document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === v));
-  $('view-title').textContent = VIEWS[v];
+  // In the side rail the sub-item lights up under its parent; the phone's tab
+  // bar has no sub-items, so there the parent stands for both.
+  document.querySelectorAll('.nav-item').forEach(b => {
+    const sub = b.classList.contains('nav-sub');
+    b.classList.toggle('active', b.dataset.view === v || (b.dataset.view === top && !b.closest('.nav')));
+    b.classList.toggle('open', !sub && b.dataset.view === top && top !== v);
+  });
+  $('spend-tabs').hidden = top !== 'spending';
+  $('spend-tabs').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.goto === v));
+  $('view-title').textContent = PARENT[v] ? `${VIEWS[top]} / ${VIEWS[v]}` : VIEWS[v];
   $('filter-bar').hidden = RANGE_FREE.has(v);
   if (push && location.hash !== '#' + v) {
     if (history.state?.layer) history.replaceState({ view: v }, '', '#' + v);
@@ -306,7 +321,7 @@ function renderActive() {
   if (!CTX || $('dashboard').hidden) return;
   hideTip();
   ({ overview: renderOverview, cashflow: renderCashflow, spending: renderSpending,
-    budgets: renderBudgets, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
+    budgets: renderBudgets, income: renderIncome, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
 }
 
 let resizeTimer;
@@ -788,6 +803,251 @@ $('bud-clear').addEventListener('click', () => {
   if (confirm('Remove every category budget?')) saveBudgets({});
 });
 
+// ── Income ────────────────────────────────────────────────────────────────────
+// A salary tracker and a "what if". The pay you enter is turned into a year of
+// take-home with the federal and Virginia rules in tax.js; your real deposits
+// then set the two things no table knows: how much leaves before tax, and how
+// far your withholding sits from the textbook figure.
+const INC = { federal: '#d95926', fica: '#c98500', virginia: '#9085e9', pretax: '#3987e5', net: '#199e70' };
+const INC_FIELDS = { salary: 'inc-salary', freq: 'inc-freq', bonus: 'inc-bonus', bonusUnit: 'inc-bonus-unit', bonusMonth: 'inc-bonus-month', filing: 'inc-filing', netPay: 'inc-net' };
+const RAISE_IDS = { pct: 'inc-raise-pct', usd: 'inc-raise-usd', salary: 'inc-raise-salary' };
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+$('inc-bonus-month').innerHTML = MONTH_NAMES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+
+let incDraft = null; // the form as it is being typed, before it is saved
+const incSaved = () => ({ ...N.DEFAULTS, ...(state.settings.income || {}) });
+const tidyNum = n => String(Math.round(n * 100) / 100);
+const fill = (id, value) => { const el = $(id); if (document.activeElement !== el) el.value = value; };
+const stackBar = (parts, total, label) => `<div class="stack-bar" role="img" aria-label="${esc(label)}">${parts.filter(p => p.v > 0.004).map(p =>
+  `<i style="width:${(p.v / total * 100).toFixed(2)}%;background:${p.color}" data-tip="${esc(p.name)}|${money(p.v)} · ${pct(p.v / total, 1)}"></i>`).join('')}</div>`;
+const stackLegend = (parts, total) => `<div class="legend">${parts.filter(p => p.v > 0.004).map(p =>
+  `<span><i style="background:${p.color}"></i>${esc(p.name)} ${money0(p.v)} · ${pct(p.v / total)}</span>`).join('')}</div>`;
+const partsOf = y => [
+  { name: 'Take-home', v: y.net, color: INC.net },
+  { name: 'Before-tax deductions', v: y.pretax, color: INC.pretax },
+  { name: 'Federal income tax', v: y.federal, color: INC.federal },
+  { name: 'Social Security + Medicare', v: y.ss + y.medicare, color: INC.fica },
+  { name: 'Virginia income tax', v: y.virginia, color: INC.virginia },
+];
+
+function renderIncome(c) {
+  const cfg = incDraft || incSaved();
+  const salary = Number(cfg.salary) || 0;
+  const pay = N.detectPaycheck(SCHED);
+  const netPay = Number(cfg.netPay) > 0 ? Number(cfg.netPay) : pay?.amount || null;
+  const eff = { ...cfg, netPay };
+  const freq = N.FREQ[cfg.freq] || N.FREQ.biweekly;
+
+  for (const [k, id] of Object.entries(INC_FIELDS)) fill(id, typeof N.DEFAULTS[k] === 'string' || k === 'bonusMonth' ? cfg[k] : cfg[k] || '');
+  $('inc-net').placeholder = pay ? fmt(pay.amount) : 'optional';
+  fill('inc-save-share', cfg.saveShare ?? 100);
+  $('inc-net-note').innerHTML = Number(cfg.netPay) > 0
+    ? `Entered by hand.${pay ? ` Your deposits from ${esc(pay.merchant)} are running at ${money(pay.amount)}. <button class="link-btn" id="inc-net-auto">Use those instead</button>` : ''}`
+    : pay ? `Read from your deposits: ${esc(pay.merchant)}, ${money(pay.amount)} ${N.FREQ[pay.freq].label.toLowerCase()}. Type a figure to override it.`
+      + (pay.freq !== cfg.freq ? ` Those deposits look ${N.FREQ[pay.freq].label.toLowerCase()}, not ${freq.label.toLowerCase()}. <button class="link-btn" id="inc-freq-fix" data-freq="${pay.freq}">Switch</button>` : '')
+    : 'Enter what one paycheck deposits and your tax and deduction rates are backed out of it. Without it, the figures are a plain estimate.';
+  $('inc-foot').textContent = `Estimates for tax year ${T.TAX_YEAR}: federal brackets and standard deduction, Social Security and Medicare, and Virginia's rates, standard deduction and personal exemption. Credits, itemized deductions and other income are not modelled. A bonus is usually withheld at a flat rate on the day and squared up when you file; the figures here are what it adds to the year. Not tax advice.`;
+
+  if (!(salary > 0)) {
+    setKpis('inc-kpis', [kpiTile({ label: 'Gross per year', value: '—', sub: 'enter your salary below' }), kpiTile({ label: 'Take-home per paycheck', value: pay ? money(pay.amount) : '—', sub: pay ? `from ${esc(pay.merchant)}` : '' }),
+      kpiTile({ label: 'Take-home per year', value: '—' }), kpiTile({ label: 'Kept of gross', value: '—' })]);
+    for (const id of ['inc-split', 'inc-va', 'inc-year-sum', 'inc-raise-bar']) $(id).innerHTML = id === 'inc-raise-bar' ? '' : empty('Enter your salary to see this.');
+    $('inc-raise-table').innerHTML = ''; $('inc-raise-note').textContent = ''; $('inc-year-legend').innerHTML = '';
+    for (const id of ['inc-split-meta', 'inc-raise-meta', 'inc-year-meta', 'inc-va-meta']) $(id).textContent = '';
+    for (const id of Object.values(RAISE_IDS)) fill(id, '');
+    charts['inc-year-chart']?.destroy(); delete charts['inc-year-chart'];
+    return;
+  }
+
+  const rates = N.ratesFor(eff);
+  const now = N.project(eff, rates);
+  const newSalary = N.raisedSalary(salary, cfg.raise);
+  const hasRaise = !!cfg.raise && newSalary > 0 && Math.abs(newSalary - salary) >= 0.5;
+  const then = N.project(eff, rates, hasRaise ? newSalary : salary);
+  const d = T.difference(now.full, then.full);
+  const month = MONTH_NAMES[(cfg.bonusMonth || 3) - 1];
+
+  // Deposits against the plan, for the year the data ends in.
+  const through = isoLocal(DATA_LAST), year = Number(through.slice(0, 4));
+  const dates = N.payDates(cfg.freq, year, pay?.lastIso);
+  const tr = N.tracker({ year, dates, netPay: now.per.net, bonusNet: now.bonus.net, bonusMonth: cfg.bonusMonth || 3, txns: c.allOps, through });
+  const gap = tr.actual - tr.expectedToDate;
+
+  const y = now.full;
+  setKpis('inc-kpis', [
+    kpiTile({ label: 'Gross per year', value: money0(y.gross), sub: now.bonusGross > 0 ? `${money0(salary)} salary + ${money0(now.bonusGross)} bonus` : 'salary, no bonus' }),
+    kpiTile({ label: 'Take-home per paycheck', value: money(now.per.net), sub: `of ${money(now.per.gross)} gross · ${freq.n} a year` }),
+    kpiTile({ label: 'Take-home per year', value: money0(y.net), sub: now.bonusGross > 0 ? `incl. ${money0(now.bonus.net)} from the ${month} bonus` : `${money0(y.net / 12)} a month` }),
+    kpiTile({ label: 'Kept of gross', value: pct(y.net / y.gross, 1), sub: `${pct(y.taxes / y.gross, 1)} tax · ${pct(y.pretax / y.gross, 1)} before tax`,
+      spark: `<div class="meter" aria-hidden="true"><div style="width:${(y.net / y.gross * 100).toFixed(1)}%"></div></div>` }),
+    kpiTile({ label: `Received in ${year}`, value: money0(tr.actual), sub: 'vs plan to date',
+      delta: tr.expectedToDate > 0 ? { v: gap, text: money0(Math.abs(gap)), good: Math.abs(gap) < 1 ? null : gap > 0 } : null }),
+  ]);
+
+  // ── Where a paycheck goes ──
+  const line = (name, k, color) => {
+    const per = k === 'fica' ? now.per.ss + now.per.medicare : now.per[k], yr = k === 'fica' ? y.ss + y.medicare : y[k];
+    return `<tr><td>${color ? `<span class="swatch" style="background:${color}"></span>` : ''}${name}</td><td class="num">${money(per)}</td><td class="num">${money0(yr)}</td><td class="num dim">${pct(yr / y.gross, 1)}</td></tr>`;
+  };
+  const cal = !rates.calibrated
+    ? 'A plain estimate: nothing is assumed to come out before tax. Enter your take-home per paycheck and the rates are backed out of it.'
+    : !rates.fit ? `<b class="neg">That take-home is more than a ${money0(salary)} salary can leave after Social Security and Medicare.</b> Check the salary, the pay frequency and the take-home figure.`
+    : rates.pretaxRate > 0.0005
+      ? `Backed out of your ${money(netPay)} take-home: after the tax a ${money0(salary)} salary owes, ${money(now.per.pretax)} a paycheck (${pct(rates.pretaxRate, 1)} of gross) is left unexplained, so it is treated as taken out before tax: a 401(k), health premiums and the like. The same share is applied to the bonus and to a raise.`
+      : rates.taxScale < 0.9995
+        ? `Backed out of your ${money(netPay)} take-home: it is higher than the standard estimate (${money(rates.plainNet / freq.n)}), so nothing is assumed to come out before tax and your income tax is taken as ${pct(rates.taxScale)} of the standard figure. The same holds for the bonus and a raise.`
+        : `Your ${money(netPay)} take-home matches the standard estimate, so nothing is assumed to come out before tax.`;
+  $('inc-split-meta').textContent = rates.calibrated && rates.fit ? 'rates backed out of your take-home' : 'estimate';
+  $('inc-split').innerHTML = `<div class="inc-pad">${stackBar(partsOf(y), y.gross, 'Where a year of gross pay goes')}${stackLegend(partsOf(y), y.gross)}</div>
+    <div class="table-wrap"><table class="data"><thead><tr><th>Per</th><th class="num">Paycheck</th><th class="num">Year${now.bonusGross > 0 ? ' + bonus' : ''}</th><th class="num">Of gross</th></tr></thead>
+    <tbody>${line('Gross pay', 'gross')}${line('Federal income tax', 'federal', INC.federal)}${line('Social Security + Medicare', 'fica', INC.fica)}${line('Virginia income tax', 'virginia', INC.virginia)}${y.pretax > 0.004 ? line('Before-tax deductions', 'pretax', INC.pretax) : ''}</tbody>
+    <tfoot>${line('Take-home', 'net', INC.net)}</tfoot></table></div>
+    <p class="inc-note">${cal}</p>`;
+
+  // ── What if: a raise ──
+  for (const [mode, id] of Object.entries(RAISE_IDS)) {
+    fill(id, hasRaise ? tidyNum(mode === 'pct' ? (newSalary / salary - 1) * 100 : mode === 'usd' ? newSalary - salary : newSalary) : '');
+  }
+  $('inc-raise-salary').placeholder = fmt0(salary);
+  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'type a raise, or a new salary';
+
+  const spend = N.monthlySpending(c.allOps, through), spendYr = spend.monthly * 12;
+  const share = Math.max(0, Math.min(100, Number(cfg.saveShare ?? 100))) / 100;
+  const spendThen = spendYr + (d.net > 0 ? d.net * (1 - share) : 0);
+  const sNow = N.savings(now.full, spendYr), sThen = N.savings(then.full, spendThen);
+
+  const up = d.gross >= 0;
+  $('inc-raise-bar').innerHTML = hasRaise ? (() => {
+    const parts = [
+      { name: up ? 'You keep' : 'Take-home lost', v: Math.abs(d.net), color: INC.net },
+      { name: 'Before tax', v: Math.abs(d.pretax), color: INC.pretax },
+      { name: 'Federal', v: Math.abs(d.federal), color: INC.federal },
+      { name: 'Social Security + Medicare', v: Math.abs(d.ss + d.medicare), color: INC.fica },
+      { name: 'Virginia', v: Math.abs(d.virginia), color: INC.virginia },
+    ];
+    const total = Math.abs(d.gross), bonusToo = Math.abs(then.bonusGross - now.bonusGross) > 0.5;
+    return `<div class="inc-headline">${up
+      ? `Of ${money0(total)} more a year${bonusToo ? ' (the bonus rises with it)' : ''}, you keep <b class="pos">${money0(d.net)}</b>: ${pct(d.net / total)} of it, or <b>${money(then.per.net - now.per.net)}</b> more per paycheck.`
+      : `Of ${money0(total)} less a year, take-home falls by <b class="neg">${money0(-d.net)}</b>: ${money(now.per.net - then.per.net)} less per paycheck.`}</div>
+      ${stackBar(parts, total, 'Where the change in pay goes')}${stackLegend(parts, total)}`;
+  })() : '';
+
+  const chg = (a, b, { rate = false, good = 1 } = {}) => {
+    if (!hasRaise) return '<td class="num dim">—</td>';
+    const v = b - a;
+    if (Math.abs(v) < (rate ? 0.00005 : 0.005)) return '<td class="num dim">=</td>';
+    const txt = rate ? `${v > 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)} pts` : (v > 0 ? '+' : '−') + '$' + fmt0(v);
+    return `<td class="num ${good ? ((v > 0) === (good > 0) ? 'pos' : 'neg') : ''}">${txt}</td>`;
+  };
+  const row = (name, a, b, opt = {}) => {
+    const f = opt.rate ? v => (v == null ? '—' : pct(v, 1)) : opt.cents ? money : money0;
+    return `<tr${opt.cls ? ` class="${opt.cls}"` : ''}><td>${name}</td><td class="num">${f(a)}</td><td class="num${hasRaise ? '' : ' dim'}">${hasRaise ? f(b) : '—'}</td>${a == null || b == null ? '<td class="num dim">—</td>' : chg(a, b, opt)}</tr>`;
+  };
+  const t = then.full;
+  $('inc-raise-table').innerHTML = `<thead><tr><th></th><th class="num">Now</th><th class="num">With the raise</th><th class="num">Change</th></tr></thead><tbody>
+    ${row('Salary', salary, then.salary)}
+    ${now.bonusGross > 0 || then.bonusGross > 0 ? row(`Bonus, ${month}`, now.bonusGross, then.bonusGross) : ''}
+    ${row('Federal income tax', y.federal, t.federal, { good: 0 })}
+    ${row('Social Security + Medicare', y.ss + y.medicare, t.ss + t.medicare, { good: 0 })}
+    ${row('Virginia income tax', y.virginia, t.virginia, { good: 0 })}
+    ${y.pretax > 0.004 ? row('Before-tax deductions', y.pretax, t.pretax, { good: 0 }) : ''}
+    ${row('Take-home per year', y.net, t.net, { cls: 'strong' })}
+    ${row('Take-home per paycheck', now.per.net, then.per.net, { cents: true })}
+    ${now.bonusGross > 0 || then.bonusGross > 0 ? row(`${month} bonus after tax`, now.bonus.net, then.bonus.net) : ''}
+    ${row('Kept of gross', y.net / y.gross, t.net / t.gross, { rate: true })}
+    ${spend.months ? `
+    ${row('Spending per year', spendYr, spendThen, { good: -1, cls: 'sep' })}
+    ${row('Left over per year', sNow.left, sThen.left)}
+    ${row('Savings rate, of take-home', sNow.ofTakeHome, sThen.ofTakeHome, { rate: true, cls: 'strong' })}
+    ${y.pretax > 0.004 ? row('Savings rate, counting before-tax money, of gross', sNow.withPretax, sThen.withPretax, { rate: true }) : ''}` : ''}
+  </tbody>`;
+  const band = v => pct(v, v * 1000 % 10 ? 2 : 0);
+  $('inc-raise-note').innerHTML = (hasRaise
+    ? `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
+    : `Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare. `)
+    + (spend.months ? `Spending is your average over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month). “Save” is the share of the extra take-home you would keep rather than spend.` : '');
+
+  // ── This year ──
+  const lastMonth = Number(through.slice(5, 7));
+  $('inc-year-meta').textContent = `${year} · through ${shortDate(DATA_LAST)}`;
+  $('inc-year-legend').innerHTML = `<span><i style="background:${C.ink3}"></i>Plan</span><span><i style="background:${C.in}"></i>Received</span>`;
+  chart('inc-year-chart', {
+    type: 'bar',
+    data: { labels: tr.months.map(m => monthName(m.ym)), datasets: [
+      { label: 'Plan', data: tr.months.map(m => A.round2(m.expected)), backgroundColor: 'rgba(122,122,122,0.45)', borderColor: C.ink3, borderWidth: 1, maxBarThickness: 22 },
+      { label: 'Received', data: tr.months.map((m, i) => (i < lastMonth ? A.round2(m.actual) : null)), backgroundColor: C.in, maxBarThickness: 22 },
+    ] },
+    options: { ...hoverLine,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: x => MONTH_NAMES[x[0].dataIndex],
+        label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}`,
+        footer: x => { const m = tr.months[x[0].dataIndex]; return `${m.paychecks} payday${m.paychecks === 1 ? '' : 's'}${m.bonus ? ' + bonus' : ''}`; } } } },
+      scales: { x: xPlain(), y: { ...yMoney, beginAtZero: true } }, datasets: { bar: { categoryPercentage: 0.7, barPercentage: 0.85 } } },
+  });
+  const bm = tr.months[(cfg.bonusMonth || 3) - 1];
+  const extra = bm ? bm.actual - bm.paychecks * now.per.net : 0;
+  $('inc-year-sum').innerHTML = `
+    <div class="sum-row"><span>Plan through ${shortDate(DATA_LAST)}</span><span class="amt">${money(tr.expectedToDate)}</span></div>
+    <div class="sum-row"><span>Received (deposits filed as Income)</span><span class="amt">${money(tr.actual)}</span></div>
+    <div class="sum-row total"><span>${gap >= 0 ? 'Ahead of plan' : 'Behind plan'}</span><span class="amt ${gap >= 0 ? 'pos' : 'neg'}">${signed(gap)}</span></div>
+    <div class="sum-row"><span>Next payday</span><span class="amt">${tr.next ? shortDate(A.localTs(tr.next)) : `${year + 1}`}</span></div>
+    ${now.bonusGross > 0 ? `<div class="sum-row"><span>${month} bonus</span><span class="amt">${money0(now.bonus.net)} planned${lastMonth >= (cfg.bonusMonth || 3) ? ` · ${extra > 1 ? `${money0(extra)} arrived beyond paychecks` : 'none seen in deposits'}` : ''}</span></div>` : ''}
+    <div class="sum-row"><span>Plan for all of ${year}</span><span class="amt">${money(tr.expected)}</span></div>
+    <p class="note" style="margin:10px 0 0">The plan is today's take-home on every payday of ${year}. If your pay changed during the year, the months before the change will sit above or below it.</p>`;
+
+  // ── Virginia ──
+  const va = T.virginiaBands(y.vaTaxable), vaThen = T.virginiaBands(t.vaTaxable);
+  const bandName = b => (b.from === 0 ? `First ${money0(b.to)}` : b.to === Infinity ? `Over ${money0(b.from)}` : `${money0(b.from)} – ${money0(b.to)}`);
+  const vaDed = T.VIRGINIA.deduction[cfg.filing] + T.VIRGINIA.exemption * T.VIRGINIA.exemptions[cfg.filing];
+  $('inc-va-meta').textContent = `${pct(y.virginia / y.gross, 2)} of gross`;
+  $('inc-va').innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Taxable income</th><th class="num">Rate</th><th class="num">Tax now</th>${hasRaise ? '<th class="num">With the raise</th>' : ''}</tr></thead>
+    <tbody>${va.map((b, i) => `<tr><td>${bandName(b)}</td><td class="num">${band(b.rate)}</td><td class="num">${money(b.tax * rates.taxScale)}</td>${hasRaise ? `<td class="num">${money(vaThen[i].tax * rates.taxScale)}</td>` : ''}</tr>`).join('')}</tbody>
+    <tfoot><tr><td>Virginia tax</td><td></td><td class="num">${money(y.virginia)}</td>${hasRaise ? `<td class="num">${money(t.virginia)}</td>` : ''}</tr></tfoot></table></div>
+    <p class="inc-note">Virginia taxes ${money0(y.vaTaxable)} of your ${money0(y.gross)}: gross pay${y.pretax > 0.004 ? `, less ${money0(y.pretax)} taken out before tax,` : ''} less the ${money0(T.VIRGINIA.deduction[cfg.filing])} standard deduction and ${money0(vaDed - T.VIRGINIA.deduction[cfg.filing])} in personal exemptions.
+    ${y.vaTaxable > 17000 ? `Everything past ${money0(17000)} is in the top band, so ${hasRaise ? `the raise adds <b>${money0(t.virginia - y.virginia)}</b> of Virginia tax, ${band(0.0575)} of its taxable part` : `a raise is taxed ${band(0.0575)} by Virginia on every taxable dollar`}.` : ''}
+    ${rates.calibrated && rates.fit && rates.taxScale < 0.9995 ? `Scaled to ${pct(rates.taxScale)} of the schedule, to match your take-home.` : ''}</p>`;
+}
+
+// Reads the form into a config. `raiseMode` is whichever raise box was typed in last.
+let raiseMode = null;
+function readIncome() {
+  const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
+  const cfg = { ...incSaved(), ...(incDraft || {}) };
+  cfg.salary = Math.max(0, num('inc-salary') || 0);
+  cfg.freq = $('inc-freq').value;
+  cfg.bonus = Math.max(0, num('inc-bonus') || 0);
+  cfg.bonusUnit = $('inc-bonus-unit').value;
+  cfg.bonusMonth = Number($('inc-bonus-month').value) || 3;
+  cfg.filing = $('inc-filing').value;
+  cfg.netPay = num('inc-net') > 0 ? num('inc-net') : null;
+  cfg.saveShare = Math.max(0, Math.min(100, num('inc-save-share') ?? 100));
+  if (raiseMode) {
+    const v = num(RAISE_IDS[raiseMode]);
+    cfg.raise = v == null || (raiseMode !== 'salary' && v === 0) ? null : { mode: raiseMode, value: v };
+  }
+  return cfg;
+}
+async function saveIncome(cfg) {
+  incDraft = null;
+  state.settings.income = cfg;
+  await commit();
+  renderIncome(CTX);
+}
+const incomeView = document.querySelector('.view[data-view="income"]');
+incomeView.addEventListener('input', ev => {
+  if (!ev.target.matches('input, select')) return;
+  if (ev.target.dataset.raise) raiseMode = ev.target.dataset.raise;
+  incDraft = readIncome();
+  renderIncome(CTX);
+});
+incomeView.addEventListener('change', ev => { if (ev.target.matches('input, select')) saveIncome(readIncome()); });
+incomeView.addEventListener('submit', ev => ev.preventDefault());
+incomeView.addEventListener('click', ev => {
+  if (ev.target.closest('#inc-raise-clear')) { raiseMode = null; saveIncome({ ...incSaved(), raise: null }); }
+  else if (ev.target.closest('#inc-net-auto')) saveIncome({ ...incSaved(), netPay: null });
+  else if (ev.target.closest('#inc-freq-fix')) saveIncome({ ...incSaved(), freq: ev.target.closest('#inc-freq-fix').dataset.freq });
+});
+
 // ── Recurring ─────────────────────────────────────────────────────────────────
 function renderRecurring() {
   const live = SCHED.filter(x => x.active);
@@ -1080,10 +1340,11 @@ $('cmd-kbd').textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' :
 function openCmd() {
   if ($('dashboard').hidden) return;
   cmdItems = [
-    ...Object.entries(VIEWS).map(([k, label]) => ({ kind: 'View', label, run: () => setView(k) })),
+    ...Object.entries(VIEWS).map(([k, label]) => ({ kind: 'View', label: PARENT[k] ? `${VIEWS[PARENT[k]]}: ${label}` : label, run: () => setView(k) })),
     ...[['30', 'Last month'], ['90', 'Last 3 months'], ['180', 'Last 6 months'], ['ytd', 'Year to date'], ['365', 'Last year'], ['0', 'All time']]
       .map(([k, label]) => ({ kind: 'Period', label, run: () => applyPreset(k) })),
     { kind: 'Action', label: 'Refresh data (add CSV files)', run: () => setView('accounts') },
+    ...(state.plaid && plaidItems().length && !demo ? [{ kind: 'Action', label: 'Sync bank connections', run: () => plaidSync() }] : []),
     ...(watch.current() ? [{ kind: 'Action', label: `Check ${watch.current().name} for new exports`, run: () => watchScan({ ask: true, loud: true }) }] : []),
     { kind: 'Action', label: 'Export visible transactions as CSV', run: () => { setView('transactions'); $('txn-export').click(); } },
     { kind: 'Action', label: 'Download backup', run: () => $('export-backup').click() },
@@ -1127,7 +1388,7 @@ document.addEventListener('keydown', ev => {
   if (ev.ctrlKey || ev.metaKey || ev.altKey || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
   if (document.querySelector('.overlay.open') || $('dashboard').hidden) return;
   if (ev.key === '/') { ev.preventDefault(); openCmd(); return; }
-  const v = Object.keys(VIEWS)[Number(ev.key) - 1];
+  const v = NAV_KEYS[Number(ev.key) - 1];
   if (v) setView(v);
 });
 
@@ -1148,8 +1409,9 @@ function startDemo() {
   state = {
     transactions: demoFiles().flatMap(text => A.parseFile(text).transactions),
     rules: { merchant: {}, amount_rules: [] }, training: [],
-    settings: { cc_start: 0, budgets: { Groceries: 650, Dining: 320, Shopping: 300, Subscriptions: 45, Transportation: 160, Entertainment: 120, 'Utilities & Bills': 200 } },
-    sync: null, meta: { updatedAt: 0, rulesUpdatedAt: 0 },
+    settings: { cc_start: 0, budgets: { Groceries: 650, Dining: 320, Shopping: 300, Subscriptions: 45, Transportation: 160, Entertainment: 120, 'Utilities & Bills': 200 },
+      income: { salary: 112000, freq: 'biweekly', bonus: 8500, bonusUnit: 'usd', bonusMonth: 3, filing: 'single', netPay: null, raise: { mode: 'pct', value: 5 }, saveShare: 100 } },
+    sync: null, plaid: null, meta: { updatedAt: 0, rulesUpdatedAt: 0 },
   };
   rangePreset = null;
   showView();
@@ -1309,7 +1571,7 @@ async function ingest(items, { auto = false } = {}) {
     return 0;
   }
   if (added) {
-    state.transactions = A.repairStored(merged);
+    state.transactions = settle(merged);
     await commit();
     store.requestPersistence();
     showView();
@@ -1382,6 +1644,7 @@ function accountFacts() {
 }
 
 function renderRefresh() {
+  renderPlaid();
   const facts = accountFacts();
   $('rf-accounts-sec').hidden = !facts.size;
   let oldest = null;
@@ -1595,6 +1858,181 @@ async function drainInbox() {
   } catch {}
 }
 
+// ── Bank connection (Plaid) ──────────────────────────────────────────────────
+// The relay's address and key are kept on this device only (state.plaid). The
+// linked banks, sealed by the relay, live in settings, so they sync: a second
+// device needs only the relay address and key to fetch from the same banks.
+const PLAID_GUIDE = 'https://github.com/jsandhagen/FinanceTracker/blob/main/server/README.md';
+const PLAID_EVERY = 3 * 60 * 60 * 1000; // banks post new transactions a few times a day
+let plaidBusy = false;
+const plaidItems = () => state.settings.plaid?.items || [];
+// What every merge of transactions goes through before it is saved.
+const settle = list => P.tidy(A.repairStored(list), state.settings.plaid);
+const ago = ts => {
+  const m = Math.round((Date.now() - ts) / 60000);
+  return m < 2 ? 'just now' : m < 90 ? `${m} min ago` : m < 36 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+
+function renderPlaid(status = '') {
+  const el = $('plaid-body'), items = plaidItems();
+  if (demo) { el.innerHTML = '<p>Bank connections are switched off in the demo.</p>'; return; }
+  if (!state.plaid) {
+    el.innerHTML = `<p>${items.length
+      ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device. Enter the same relay address and access key to fetch from ${items.length === 1 ? 'it' : 'them'} here too.`
+      : `With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Plaid's keys cannot be kept in a web page, so they live in a small relay that you host (free on Cloudflare). <a href="${PLAID_GUIDE}" target="_blank" rel="noopener">The set-up steps</a> take about ten minutes.`}</p>
+      <form class="plaid-form" id="plaid-form">
+        <input class="set-input" id="plaid-url" type="text" inputmode="url" placeholder="Relay address (https://….workers.dev)" autocomplete="off" spellcheck="false" />
+        <input class="set-input" id="plaid-key" type="password" placeholder="Access key (the APP_KEY you chose)" autocomplete="off" />
+        <button class="btn primary">Save</button>
+      </form>
+      <div class="set-status" id="plaid-status">${esc(status)}</div>`;
+    return;
+  }
+  const rows = items.map(it => {
+    const broken = it.error?.code === 'ITEM_LOGIN_REQUIRED' || it.error?.code === 'BAD_ITEM';
+    const accts = (it.accounts || []).map(a => a.account.replace(' ...', ' ')).join(', ');
+    return `<div class="rf-acct"><span class="rf-name"><b>${esc(it.name)}</b><small>${esc(accts || 'accounts appear after the first sync')}</small></span>
+      <span>${it.lastSync ? `synced ${ago(it.lastSync)}` : 'not synced yet'}<small>${it.error ? esc(it.error.code === 'ITEM_LOGIN_REQUIRED' ? 'The bank wants you to sign in again.' : it.error.message) : 'checked when the app opens'}</small></span>
+      <span class="tag ${it.error ? 'over' : 'ok'}">${it.error ? (broken ? 'RECONNECT' : 'FAILED') : 'LINKED'}</span>
+      <span class="rf-go">${it.error?.code === 'ITEM_LOGIN_REQUIRED' ? `<button class="btn small primary" data-plaid-fix="${esc(it.id)}">Sign in</button>` : ''}<button class="link-btn" data-plaid-remove="${esc(it.id)}">remove</button></span></div>`;
+  }).join('');
+  el.innerHTML = `${rows ? `<div class="rf-accounts">${rows}</div>` : '<p>The relay is set up. Connect a bank and its transactions arrive here, then keep arriving.</p>'}
+    <div class="set-row">
+      ${items.length ? `<button class="btn primary" id="plaid-sync"${plaidBusy ? ' disabled' : ''}>${plaidBusy ? 'Syncing…' : 'Sync now'}</button>` : ''}
+      <button class="btn${items.length ? '' : ' primary'}" id="plaid-add"${plaidBusy ? ' disabled' : ''}>Connect ${items.length ? 'another' : 'a'} bank</button>
+      <button class="btn" id="plaid-forget">Forget the relay on this device</button>
+      <span class="set-status" id="plaid-status">${esc(status)}</span>
+    </div>
+    ${items.length ? '<p style="margin-top:10px">CSV exports still work alongside this. A transaction that arrives both ways is kept once.</p>' : ''}`;
+}
+
+// Fetches what is new from every linked bank and folds it in.
+async function plaidSync({ quiet = false } = {}) {
+  const ps = state.settings.plaid;
+  if (!state.plaid || demo || plaidBusy || !ps?.items.length) return 0;
+  plaidBusy = true;
+  renderPlaid();
+  const before = new Set(state.transactions.map(t => t.id));
+  let list = state.transactions, failed = null, got = false;
+  for (const item of ps.items) {
+    try {
+      list = P.applySync(list, ps, item, await P.call(state.plaid, 'sync', { item: item.sealed, cursor: item.cursor }));
+      got = true;
+    } catch (e) {
+      item.error = { code: e.code, message: e.message };
+      failed = item;
+    }
+  }
+  plaidBusy = false;
+  if (demo) return 0; // the demo was opened while this was in flight
+  const settled = settle(list);
+  const added = settled.filter(t => !before.has(t.id)).length;
+  const changed = settled !== state.transactions;
+  state.transactions = settled;
+  if (got || failed) await commit();
+  if (changed) { store.requestPersistence(); showView(); }
+  if (refreshOverlay.classList.contains('open') || view === 'accounts') renderRefresh();
+  if (failed && !quiet) toast(`${failed.name}: ${failed.error.code === 'ITEM_LOGIN_REQUIRED' ? 'the bank wants you to sign in again. Open Accounts to do it.' : failed.error.message}`, true);
+  else if (added) toast(`Bank sync: ${added.toLocaleString()} new transaction${added === 1 ? '' : 's'}.`);
+  else if (!quiet && got) toast('Bank sync: nothing new.');
+  return added;
+}
+function plaidAuto() {
+  const items = plaidItems();
+  if (!state?.plaid || demo || !items.length || document.visibilityState !== 'visible') return;
+  if (Date.now() - Math.min(...items.map(it => it.lastSync || 0)) > PLAID_EVERY) plaidSync({ quiet: true });
+}
+document.addEventListener('visibilitychange', plaidAuto);
+
+// Opens Plaid's sign-in window. `item` repairs that connection; without it a
+// new bank is added. Banks that sign in on their own site send the browser
+// away and back, so the token is set aside for the return trip (resumeLink).
+const LINK_KEY = 'ft-plaid-link';
+async function plaidLink(item = null) {
+  if (!state.plaid || plaidBusy) return;
+  const here = location.origin + location.pathname;
+  const ask = body => P.call(state.plaid, 'link-token', { ...body, ...(item ? { item: item.sealed } : {}) });
+  try {
+    let token;
+    try { token = (await ask({ redirect_uri: here })).link_token; }
+    catch (e) {
+      // The return address has to be listed in the Plaid dashboard. Until it
+      // is, Link still works for banks that sign in inside its own window.
+      if (!/redirect/i.test(e.message)) throw e;
+      token = (await ask({})).link_token;
+    }
+    try { localStorage.setItem(LINK_KEY, JSON.stringify({ token, item: item?.id || null, at: Date.now() })); } catch {}
+    await finishLink(await P.openLink(token), item);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+async function finishLink(done, item) {
+  try { localStorage.removeItem(LINK_KEY); } catch {}
+  if (!done) return;
+  if (item) item.error = null;
+  else {
+    const r = await P.call(state.plaid, 'exchange', { public_token: done.public_token });
+    const ps = state.settings.plaid || (state.settings.plaid = P.emptyState());
+    ps.items = ps.items.filter(it => it.id !== r.item_id).concat({ id: r.item_id, sealed: r.item, name: done.institution, cursor: null, accounts: [], lastSync: 0, error: null });
+  }
+  await commit();
+  const n = await plaidSync({ quiet: true });
+  if (!n && !item) {
+    // A bank takes a minute or two to hand its history to Plaid.
+    toast(`${done.institution} is connected. Its history is still on the way and will appear here by itself.`);
+    for (const wait of [20000, 60000, 180000]) setTimeout(() => { if (!plaidItems().some(it => it.accounts?.length && state.transactions.some(P.isPlaid))) plaidSync({ quiet: true }); }, wait);
+  }
+  renderRefresh();
+}
+// Back from signing in on the bank's own site.
+async function resumeLink() {
+  if (!new URLSearchParams(location.search).has('oauth_state_id')) return;
+  const back = location.href;
+  history.replaceState(history.state, '', location.pathname + location.hash);
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(LINK_KEY)); } catch {}
+  if (!saved || !state.plaid || Date.now() - saved.at > 30 * 60 * 1000) return;
+  try { await finishLink(await P.openLink(saved.token, back), plaidItems().find(it => it.id === saved.item) || null); }
+  catch (e) { toast(e.message, true); }
+}
+
+$('plaid-body').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const url = P.cleanRelay($('plaid-url').value), key = $('plaid-key').value.trim();
+  const say = msg => { $('plaid-status').textContent = msg; };
+  if (!url) { say('Enter the relay address, starting with https://'); return; }
+  if (key.length < 16) { say('Enter the access key: the APP_KEY set on the relay, at least 16 characters.'); return; }
+  say('Checking…');
+  try { await P.call({ url, key }, 'link-token', {}); }
+  catch (e) { say(e.message); return; }
+  state.plaid = { url, key };
+  await store.set('plaid', state.plaid);
+  renderPlaid();
+  if (plaidItems().length) plaidSync();
+});
+$('plaid-body').addEventListener('click', async ev => {
+  const fix = ev.target.closest('[data-plaid-fix]'), rm = ev.target.closest('[data-plaid-remove]');
+  if (ev.target.closest('#plaid-sync')) plaidSync();
+  else if (ev.target.closest('#plaid-add')) plaidLink();
+  else if (fix) plaidLink(plaidItems().find(it => it.id === fix.dataset.plaidFix));
+  else if (rm) {
+    const item = plaidItems().find(it => it.id === rm.dataset.plaidRemove);
+    if (!item || !confirm(`Disconnect ${item.name}? This ends the connection at Plaid for every device. Transactions already here are kept.`)) return;
+    try { await P.call(state.plaid, 'remove', { item: item.sealed }); }
+    catch (e) { if (e.code !== 'BAD_ITEM' && !confirm(`${e.message}\n\nRemove it from the app anyway? If the connection is still live at Plaid you can end it in the Plaid dashboard.`)) return; }
+    state.settings.plaid.items = plaidItems().filter(it => it !== item);
+    await commit();
+    renderRefresh();
+  } else if (ev.target.closest('#plaid-forget')) {
+    if (!confirm('Forget the relay address and key on this device? Linked banks stay linked; enter them again to resume.')) return;
+    state.plaid = null;
+    await store.del('plaid');
+    renderPlaid();
+  }
+});
+$('welcome-bank').addEventListener('click', () => { openRefresh(); $('plaid-sec').scrollIntoView({ block: 'start' }); });
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 const settingsOverlay = $('settings-overlay');
 function openSettings() {
@@ -1711,7 +2149,7 @@ async function restoreBackup(file) {
   if (demo) { demo = false; state = await store.loadAll(); rangePreset = null; }
   const before = state.transactions.length;
   Object.assign(state, sync.merge(state, data));
-  state.transactions = A.repairStored(state.transactions);
+  state.transactions = settle(state.transactions);
   await commit();
   store.requestPersistence();
   closeSettings();
@@ -1727,6 +2165,9 @@ $('clear-all').addEventListener('click', async () => {
   if (state.sync?.gistId && confirm('Also delete the encrypted copy synced to GitHub? Cancel keeps it, so other devices are unaffected and this one re-downloads it on the next sync.')) {
     try { await sync.deleteGist(state.sync.token, state.sync.gistId); } catch (e) { toast(e.message, true); }
     await disconnectSync();
+  }
+  if (state.plaid && plaidItems().length && confirm('Also end your bank connections at Plaid? Cancel keeps them, so your other devices keep fetching.')) {
+    for (const it of plaidItems()) { try { await P.call(state.plaid, 'remove', { item: it.sealed }); } catch (e) { toast(e.message, true); } }
   }
   await store.clearData();
   state = await store.loadAll();
@@ -1773,7 +2214,7 @@ async function syncNow({ quiet = false } = {}) {
     const beforeCount = state.transactions.length;
     const beforeRules = state.meta.rulesUpdatedAt;
     const beforeSettings = JSON.stringify(state.settings);
-    if (remote) { Object.assign(state, sync.merge(state, remote)); state.transactions = A.repairStored(state.transactions); }
+    if (remote) { Object.assign(state, sync.merge(state, remote)); state.transactions = settle(state.transactions); }
     const changedLocally = state.transactions.length !== beforeCount
       || state.meta.rulesUpdatedAt !== beforeRules
       || JSON.stringify(state.settings) !== beforeSettings;
@@ -1982,7 +2423,7 @@ let updatePending = false;
 
 function busy() {
   const a = document.activeElement;
-  return syncing
+  return syncing || plaidBusy
     || picker.classList.contains('open')
     || settingsOverlay.classList.contains('open')
     || scanning
@@ -2056,7 +2497,7 @@ async function boot() {
   // file lets every file app offer itself; importFiles sorts out the rest.
   if (isAndroid) for (const id of ['file-input', 'add-input']) $(id).removeAttribute('accept');
   state = await store.loadAll();
-  const healed = A.repairStored(state.transactions);
+  const healed = settle(state.transactions);
   if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
   await watch.load().catch(() => null);
   if (VIEWS[location.hash.slice(1)]) view = location.hash.slice(1);
@@ -2069,6 +2510,7 @@ async function boot() {
   booted();
   drainInbox();
   watchScan();
+  resumeLink().then(plaidAuto);
   // Charts measure their text, so draw them again once the bundled faces are in.
   document.fonts?.ready.then(() => renderActive());
   try {

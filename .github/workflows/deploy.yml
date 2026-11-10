@@ -35,7 +35,10 @@ jobs:
           node tests/links.test.mjs
           node tests/sync.test.mjs
           node tests/insights.test.mjs
+          node tests/income.test.mjs
+          node tests/plaid.test.mjs
           node --check js/app.js
+          node --check server/plaid-worker.js
 
       # Changes sw.js on every deploy, which is how installed copies learn there
       # is something new. Also shown under Settings so you can see what is live.
