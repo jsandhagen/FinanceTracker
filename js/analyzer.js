@@ -89,7 +89,7 @@ export const GROCERY_KEYWORDS = [
   'stop & shop', 'stop and shop', 'shoprite', 'albertsons', 'vons', 'ralphs', 'fred meyer',
   'winco', 'piggly wiggly', 'weis market', 'market basket', 'hannaford', 'the fresh market',
   'fresh thyme', 'earth fare', 'natural grocers', 'mom s organic', 'moms organic',
-  'lotte plaza', 'patel brothers', '99 ranch', 'grocery outlet', 'save a lot', 'food 4 less',
+  'lotte plaza', 'patel brothers', '99 ranch', 'marufuji', 'yami.com', 'weee!', 'sayweee', 'grocery outlet', 'save a lot', 'food 4 less',
   'smart & final', 'winn-dixie', 'winn dixie', 'ingles market', 'bi-lo', 'shoppers food', 'amazon fresh',
   'instacart', 'shipt', 'grocery', 'supermarket',
   // drink bought to take home

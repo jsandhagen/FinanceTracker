@@ -260,6 +260,8 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   assert.equal(card('COLOR PARKSIDE SALON', 'Other Services'), 'Other', 'not Oregon parks');
   assert.equal(card('WASHINGTON PARK MOBILE', 'Gas/Automotive'), 'Transportation', 'parking in a park is parking');
   assert.equal(card('VA ABC STORE 219', 'Other Services'), 'Groceries');
+  assert.equal(card('MARUFUJI MARKET', 'Merchandise'), 'Groceries');
+  assert.equal(card('YAMI.COM', 'Merchandise'), 'Groceries');
   assert.equal(card('SQ *LEGEND BARBER', 'Other Services'), 'Other');
   // A parking charge at a museum the card calls Gas/Automotive stays parking.
   assert.equal(card('SI NAT AIR & SPACE MUSEU', 'Gas/Automotive'), 'Transportation');
