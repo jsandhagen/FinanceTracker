@@ -9,7 +9,8 @@ keep working alongside it; a transaction that arrives both ways is kept once.
 Developers → Keys), choose Production or Sandbox, press **Save**, then **Connect a bank**. Nothing
 else to set up or run.
 
-The keys are kept on that device only. They are not synced and not written to backups, and they
+In a browser, the keys are kept on that device only (the Android app also carries them in the
+encrypted sync copy, so a reinstall gets them back). They are not written to backups, and they
 are sent to Plaid and nowhere else. The linked banks do sync, so a second device needs only the
 same two keys.
 
