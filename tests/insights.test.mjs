@@ -46,6 +46,51 @@ close(sch.monthly, 1725 * 30.44 / sch.interval, 'rent per month');
 assert.equal(I.schedule(rent, asOf + 200 * I.DAY).active, false, 'a stream that stopped is lapsed');
 assert.equal(I.parseFmtDate(A.fmtDate('2026-03-09')), A.localTs('2026-03-09'));
 
+// A paycheck's expected amount is what it has been lately: a $10,000 bonus from
+// the same employer in March does not lift the biweekly $3,400, and a raise
+// is picked up once it has been paid a few times.
+const pay = [];
+for (let d = A.localTs('2026-01-02'); d <= A.localTs('2026-10-30'); d += 14 * I.DAY) {
+  pay.push({ date: A.fmtDate(new Date(d).toLocaleDateString('sv')), amount: d < A.localTs('2026-02-01') ? 3200 : 3400 });
+}
+pay.splice(6, 0, { date: pay[5].date, amount: 10000 });
+const payStream = { merchant: 'ACME PAYROLL', direction: 'income',
+  avg_amount: A.round2(pay.reduce((s, t) => s + t.amount, 0) / pay.length), transactions: pay };
+assert.ok(payStream.avg_amount > 3650, 'the all-time mean is what the bonus skews');
+const paySch = I.schedule(payStream, A.localTs('2026-11-05'));
+assert.equal(paySch.amount, 3400, 'expected paycheck ignores the bonus');
+close(paySch.monthly, 3400 * 30.44 / 14, 'paycheck per month');
+const raised = { ...payStream, transactions: [...pay.slice(0, -3), ...pay.slice(-3).map(t => ({ ...t, amount: 3600 }))] };
+assert.equal(I.schedule(raised, A.localTs('2026-11-05')).amount, 3600, 'a raise shows up by its third paycheck');
+
+// As the salaried paycheck, with the bonus month known: the bonus is dropped
+// from its amount and cadence, and a raise shows from the first new paycheck.
+const asPay = I.schedule(payStream, A.localTs('2026-11-05'), { bonusMonth: 3 });
+assert.equal(asPay.amount, 3400);
+assert.equal(asPay.interval, 14);
+assert.ok(I.withoutBonus(pay, 3).every(t => t.amount < 10000), 'bonus left out');
+assert.equal(I.withoutBonus(pay, 3).length, pay.length - 1, 'the March paychecks stay');
+const folded = pay.filter(t => t.amount !== 10000).map((t, i) => (i === 5 ? { ...t, amount: 13400 } : t));
+assert.equal(I.withoutBonus(folded, 3).length, folded.length - 1, 'a paycheck with the bonus folded in is left out');
+// The base and bonus paid together on the Mar 13 check, with the data ending
+// soon after: that check was a payday, so the next one is Mar 27.
+const toMarch = { ...payStream, transactions: folded.slice(0, 6) };
+assert.equal(toMarch.transactions.at(-1).amount, 13400);
+for (const end of ['2026-03-16', '2026-04-02']) {
+  const sch = I.schedule(toMarch, A.localTs(end), { bonusMonth: 3 });
+  assert.ok(sch.active, `still paid as of ${end}`);
+  assert.equal(sch.amount, 3400);
+  assert.equal(sch.last, A.localTs('2026-03-13'), 'the combined check was a payday');
+  // within the hour the clocks moved on Mar 8
+  assert.ok(Math.abs(sch.next - Math.max(A.localTs('2026-03-27'), A.localTs(end))) <= 3600000, `next payday as of ${end}`);
+}
+// A bonus on a day of its own does not move the paydays.
+const ownDay = { ...payStream, transactions: [...pay.slice(0, 5), { date: A.fmtDate('2026-03-06'), amount: 10000 }] };
+assert.ok(Math.abs(I.schedule(ownDay, A.localTs('2026-03-09'), { bonusMonth: 3 }).next - A.localTs('2026-03-13')) <= 3600000);
+const oneRaise = { ...payStream, transactions: [...pay.slice(0, -1), { ...pay.at(-1), amount: 3600 }] };
+assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05'), { bonusMonth: 3 }).amount, 3600, 'salary raise shows at once');
+assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05')).amount, 3400, 'other streams wait for a new amount to repeat');
+
 // Budgets: budgeted categories first, spent matches the category total for the month.
 const rows = I.budgetRows(ops, '2026-05', { Groceries: 600 });
 assert.equal(rows[0].name, 'Groceries');

@@ -113,23 +113,50 @@ export function parseFmtDate(s) {
   return m ? new Date(+m[3], MONTHS.indexOf(m[1]), +m[2]).getTime() : NaN;
 }
 
+// A salaried paycheck's deposits without the bonus: in the bonus month (1–12),
+// any deposit well above the usual paycheck is the bonus, or a paycheck with
+// the bonus folded in.
+export function withoutBonus(txns, bonusMonth) {
+  const month = t => new Date(parseFmtDate(t.date)).getMonth() + 1;
+  const usual = median(txns.filter(t => month(t) !== bonusMonth).slice(-5).map(t => Math.abs(t.amount)));
+  return txns.filter(t => !(month(t) === bonusMonth && usual > 0 && Math.abs(t.amount) > usual * 1.25));
+}
+
 // When a recurring stream is next expected, and whether it still looks alive.
 // asOf is the last day of data, not today: exports are often a few weeks old.
-export function schedule(stream, asOf) {
-  const ts = stream.transactions.map(t => parseFmtDate(t.date)).filter(x => !isNaN(x));
+// `pay` marks the stream as the salaried paycheck ({ bonusMonth }, or null
+// when there is no bonus): it pays the same each time, so the next one is
+// expected at the last regular deposit, and the bonus is left out.
+export function schedule(stream, asOf, pay = null) {
+  const txns = pay ? withoutBonus(stream.transactions, pay.bonusMonth) : stream.transactions;
+  const ts = txns.map(t => parseFmtDate(t.date)).filter(x => !isNaN(x));
   const gaps = [];
   for (let i = 1; i < ts.length; i++) gaps.push(Math.round((ts[i] - ts[i - 1]) / DAY));
   const interval = Math.max(1, median(gaps));
-  const last = ts[ts.length - 1];
+  let last = ts[ts.length - 1];
+  // A check with the bonus and the base pay together was still a payday, so the
+  // cadence steps over it (a bonus on a day of its own is not stepped over).
+  if (pay) {
+    const all = stream.transactions.map(t => parseFmtDate(t.date));
+    for (;;) {
+      const step = all.find(x => x > last && Math.abs(x - (last + interval * DAY)) <= 3 * DAY);
+      if (step == null) break;
+      last = step;
+    }
+  }
   const active = (asOf - last) / DAY <= interval * 1.6 + 3;
   let next = last + interval * DAY;
   if (active && next < asOf) next = asOf;
-  const amounts = stream.transactions.map(t => Math.abs(t.amount));
+  const amounts = txns.map(t => Math.abs(t.amount));
   const lastAmt = amounts[amounts.length - 1];
   const typical = median(amounts.slice(0, -1));
+  // What the next one should be: the middle of the last five, so a one-off from
+  // the same payer does not lift it and a new price shows by its third payment.
+  // stream.avg_amount is the all-time mean, kept for Python parity.
+  const amount = round2(pay ? lastAmt : median(amounts.slice(-5)));
   return {
-    interval, last, next, active,
-    monthly: round2(stream.avg_amount * 30.44 / interval),
+    interval, last, next, active, amount,
+    monthly: round2(amount * 30.44 / interval),
     lastAmt, typical,
     priceChange: typical > 0 && Math.abs(lastAmt - typical) / typical > 0.05 && amounts.length >= 4
       && stream.direction === 'expense' && interval >= 25 ? round2(lastAmt - typical) : 0,
