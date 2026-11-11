@@ -12,9 +12,9 @@ import { Categorizer } from './categorizer.js';
 
 export const CC_CATEGORY_MAP = {
   'merchandise':         'Shopping',
-  'other services':      'Subscriptions',
+  'other services':      'Other', // barbers, museums, parks, Prime: the names decide (BRAND_RULES)
   'phone/cable':         'Utilities & Bills',
-  'internet':            'Utilities & Bills',
+  'internet':            'Subscriptions', // where a card files Steam, a domain, a streaming app
   'dining/restaurant':   'Dining',
   'automotive':          'Transportation',
   'other travel':        'Transportation', // the card's word for rides, tolls, parking
@@ -63,8 +63,9 @@ export const TRAVEL_KEYWORDS = [
   'british airways', 'lufthansa', 'air france', 'klm', 'airline', 'airways', 'amtrak',
   'global entry', 'tsa precheck',
   // Capital One Travel: flights (COTFLT), hotels (COTHTL), cars and the rest
-  'capital one travel', 'capitalone travel', 'cap one travel', 'c1 travel', 'cotflt', 'cothtl',
-  'cotcar', 'cotrnt',
+  // (COT*FLT, COT*HTL, COT*LCH on a card export; COTFLT where the * is stripped)
+  'capital one travel', 'capitalone travel', 'cap one travel', 'c1 travel', 'capital 1 lounge',
+  'cotflt', 'cothtl', 'cotcar', 'cotrnt', /(^|[^a-z0-9])cot\*/,
 ];
 export const isTravel = text => {
   const d = String(text || '').toLowerCase();
@@ -78,15 +79,18 @@ export const isTravel = text => {
 // (NOT_GROCERY), and is left to the other rules.
 export const GROCERY_KEYWORDS = [
   'trader joe', 'whole foods', 'wholefds', 'safeway', 'kroger', 'aldi', 'lidl', 'publix',
+  /(^|[^a-z0-9])h ?-?mart\b/, 'fred-meyer', 'new seasons', 'manzanita fresh', 'harvest foods',
+  'migros', /(^|[^a-z0-9])coop(\b|-)/, 'carrefour', 'crf mkt', 'esselunga', 'conad', 'rewe',
+  'edeka', 'tesco', 'sainsbury', 'loblaws', 'save-on-foods', 'no frills',
   'giant', 'harris teeter', 'wegmans', 'food lion', 'sprouts', 'h-e-b', 'heb ', 'meijer', 'hy-vee',
   'stop & shop', 'stop and shop', 'shoprite', 'albertsons', 'vons', 'ralphs', 'fred meyer',
   'winco', 'piggly wiggly', 'weis market', 'market basket', 'hannaford', 'the fresh market',
-  'fresh thyme', 'earth fare', 'natural grocers', 'mom s organic', 'moms organic', 'hmart', 'h-mart',
+  'fresh thyme', 'earth fare', 'natural grocers', 'mom s organic', 'moms organic',
   'lotte plaza', 'patel brothers', '99 ranch', 'grocery outlet', 'save a lot', 'food 4 less',
   'smart & final', 'winn-dixie', 'winn dixie', 'ingles market', 'bi-lo', 'shoppers food', 'amazon fresh',
   'instacart', 'shipt', 'grocery', 'supermarket',
 ];
-const NOT_GROCERY = /\b(fuel|gas|gasoline|pharmacy|rx)\b/i;
+const NOT_GROCERY = /fuel|gasoline|\bgas\b|pharmacy|\brx\b/i;
 export const isGrocery = text => {
   const d = String(text || '').toLowerCase();
   return !NOT_GROCERY.test(d) && GROCERY_KEYWORDS.some(k => hasKeyword(d, k));
@@ -118,7 +122,8 @@ export const BRAND_RULES = [
     'ny times', 'wsj', 'washpost', 'washington post', 'patreon', 'dropbox', 'adobe', 'microsoft 365',
     'google storage', 'google one', 'openai', 'chatgpt', 'claude.ai', 'anthropic', 'github',
     'notion.so', '1password', 'lastpass', 'nordvpn', 'expressvpn', 'duolingo', 'headspace',
-    'calm.com', 'nba league pass', 'porkbun', 'playstation', 'nintendo', 'xbox', 'steamgames',
+    'calm.com', 'nba league pass', 'porkbun', 'tidal.com', 'fox one', 'foxone', 'linkedinpre',
+    'linkedin premium', 'playstation', 'nintendo', 'xbox', 'steamgames',
     'steampowered', 'steam purchase'], 'Subscriptions'],
   [['uber trip', 'uber *trip', 'lyft', 'wmata', 'smartrip', 'ez pass', 'e-zpass', 'ezpass',
     'e zpass', 'parkmobile', 'spothero', 'laz parking', 'shell oil', 'shell service', 'exxon',
@@ -138,10 +143,11 @@ export const BRAND_RULES = [
     'one medical', 'zocdoc', 'minuteclinic', 'lenscrafters', 'warby parker', 'planet fitness',
     'orangetheory', 'equinox', 'la fitness', 'crunch fitness', 'gold s gym', 'lifetime fitness',
     'f45', 'solidcore', 'classpass', 'peloton', 'dental', 'dentist', 'orthodont', 'dermatolog',
-    'pediatric', 'hospital', 'medical'], 'Health'],
+    'pediatric', 'hospital', 'medical', 'fitness', /(^|[^a-z0-9])gym\b/], 'Health'],
   [['amc theatre', 'amc theater', 'regal cinema', 'cinemark', 'alamo drafthouse', 'fandango',
     'ticketmaster', 'stubhub', 'seatgeek', 'eventbrite', 'live nation', 'topgolf', 'bowlero',
-    'dave & buster', 'dave and buster'], 'Entertainment'],
+    'dave & buster', 'dave and buster', 'museum', 'imax', 'planetarium', 'japanese gard',
+    'botanical gard', 'arboretum', 'aquarium'], 'Entertainment'],
   [['tuition', 'coursera', 'udemy', 'chegg', 'masterclass'], 'Education'],
 ];
 export function brandCategory(text) {
@@ -149,6 +155,15 @@ export function brandCategory(text) {
   for (const [kws, cat, unless] of BRAND_RULES) if (kws.some(k => hasKeyword(d, k)) && !unless?.test(d)) return cat;
   return null;
 }
+
+// Card categories too broad to trust over a merchant's name. A Capital One card
+// files supermarkets as Merchandise, streaming as Phone/Cable or Internet,
+// barbers and museums as Other Services, gyms as Entertainment.
+const VAGUE_CARD = new Set(['Shopping', 'Other', 'Subscriptions', 'Utilities & Bills', 'Entertainment']);
+// A café or bakery the card calls Merchandise.
+const CARD_FOOD = ['coffee', 'bakery', 'cafe', 'caffe', 'restaurant', 'ristorante', 'trattoria',
+  'pizza', 'sushi', 'bistro', 'brewing', 'tavern', 'doughnut', 'donut'];
+const cardFood = text => (CARD_FOOD.some(k => hasKeyword(String(text).toLowerCase(), k)) ? 'Dining' : null);
 
 // A keyword is matched anywhere in the text when it is long, or at the start of
 // a word when short (see hasKeyword); a RegExp is used as it is.
@@ -507,9 +522,13 @@ function baseCategory(t, ml) {
     // A travel credit (Capital One Travel's yearly one, say) is filed as a
     // payment by the card, but it is money back on a trip, not the bill paid.
     const paidBill = TRANSFER_CATEGORIES.has(cat) && (cat !== 'Payment' || CARD_PAYMENT_RE.test(t.description));
-    if (!paidBill && isTravel(t.description)) cat = 'Travel';
-    else if (!TRANSFER_CATEGORIES.has(cat) && isGrocery(t.description)) cat = 'Groceries';
-    else if (!TRANSFER_CATEGORIES.has(cat)) cat = brandCategory(t.description) || cat;
+    // A trip is a trip whatever the card says, unless it says a meal (the
+    // restaurant in a hotel). Other names only replace a vague category: a
+    // card that says fuel, a pharmacy or a meal knows better than the name.
+    if (!paidBill && cat !== 'Dining' && isTravel(t.description)) cat = 'Travel';
+    else if (VAGUE_CARD.has(cat) || !ALL_CATS.includes(cat) && !TRANSFER_CATEGORIES.has(cat)) {
+      cat = (isGrocery(t.description) && 'Groceries') || brandCategory(t.description) || cardFood(t.description) || cat;
+    }
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
   }
   const d = t.description.toLowerCase();

@@ -226,4 +226,36 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   assert.ok(!seen.some(([d, c]) => ['Housing', 'Travel', 'Groceries', 'Subscriptions'].includes(c)), JSON.stringify(seen));
 }
 
+// ── Seen on a real Capital One card export ──
+{
+  const card = (d, c, credit = false) => cat(A.parseFile(CARD + `2026-06-05,2026-06-06,1033,${d},${c},${credit ? ',20.00' : '20.00,'}\n`).transactions)[0].category;
+  // Capital One Travel writes COT*FLT, COT*HTL, COT*LCH, filed as Other Travel.
+  for (const d of ['COT*FLT', 'COT*HTL', 'COT*LCH']) assert.equal(card(d, 'Other Travel'), 'Travel', d);
+  assert.equal(card('COTTAGE BAKERY', 'Dining'), 'Dining', 'not every COT is Capital One Travel');
+  // Fuel glued to the store number is still fuel; the card's category stands.
+  assert.equal(card('SAFEWAY FUEL2616', 'Gas/Automotive'), 'Transportation');
+  // Supermarkets the card calls Merchandise.
+  for (const d of ['H MART FAIRFAX LLC', 'FRED-MEYER #0650', 'NEW SEASONS #22 TAN', 'Migros MP Taesch', 'Coop-2222 Tasch', 'CARREFOUR MARKET'])
+    assert.equal(card(d, 'Merchandise'), 'Groceries', d);
+  assert.equal(card('SMITH MARTIN LLC', 'Merchandise'), 'Shopping', 'H Mart is two letters, not a surname');
+  assert.equal(card('COOPER HARDWARE', 'Merchandise'), 'Shopping', 'Coop is not Cooper');
+  // Streaming filed as Phone/Cable or Internet; a gym filed as Entertainment.
+  assert.equal(card('TIDAL.COM', 'Phone/Cable'), 'Subscriptions');
+  assert.equal(card('FOX ONE MONTHLY', 'Internet'), 'Subscriptions');
+  assert.equal(card('STEAMGAMES.COM 4259522985', 'Internet'), 'Subscriptions');
+  assert.equal(card('ASF*Exurb Fitness', 'Entertainment'), 'Health');
+  assert.equal(card('STUBHUB INC', 'Entertainment'), 'Entertainment');
+  // A café or bakery filed as Merchandise; a museum as Other Services.
+  assert.equal(card('SQ *CANELA VEGAN BAKERY &', 'Merchandise'), 'Dining');
+  assert.equal(card('Met Museum of Art', 'Other Services'), 'Entertainment');
+  // Other Services is not a subscription unless the name says so.
+  assert.equal(card('AMAZON PRIME*XB6L03O63', 'Other Services'), 'Subscriptions');
+  assert.equal(card('SOME LOCAL SERVICE', 'Other Services'), 'Other');
+  // The restaurant in a hotel is a meal; the hotel is a trip.
+  assert.equal(card('TST*SCP REDMOND HOTEL', 'Dining'), 'Dining');
+  assert.equal(card('COURTYARD BY MARRIOTT', 'Lodging'), 'Travel');
+  // A parking charge at a museum the card calls Gas/Automotive stays parking.
+  assert.equal(card('SI NAT AIR & SPACE MUSEU', 'Gas/Automotive'), 'Transportation');
+}
+
 console.log('analyzer tests passed');
