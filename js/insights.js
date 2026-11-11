@@ -133,7 +133,17 @@ export function schedule(stream, asOf, pay = null) {
   const gaps = [];
   for (let i = 1; i < ts.length; i++) gaps.push(Math.round((ts[i] - ts[i - 1]) / DAY));
   const interval = Math.max(1, median(gaps));
-  const last = ts[ts.length - 1];
+  let last = ts[ts.length - 1];
+  // A check with the bonus and the base pay together was still a payday, so the
+  // cadence steps over it (a bonus on a day of its own is not stepped over).
+  if (pay) {
+    const all = stream.transactions.map(t => parseFmtDate(t.date));
+    for (;;) {
+      const step = all.find(x => x > last && Math.abs(x - (last + interval * DAY)) <= 3 * DAY);
+      if (step == null) break;
+      last = step;
+    }
+  }
   const active = (asOf - last) / DAY <= interval * 1.6 + 3;
   let next = last + interval * DAY;
   if (active && next < asOf) next = asOf;

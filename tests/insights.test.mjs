@@ -72,6 +72,21 @@ assert.ok(I.withoutBonus(pay, 3).every(t => t.amount < 10000), 'bonus left out')
 assert.equal(I.withoutBonus(pay, 3).length, pay.length - 1, 'the March paychecks stay');
 const folded = pay.filter(t => t.amount !== 10000).map((t, i) => (i === 5 ? { ...t, amount: 13400 } : t));
 assert.equal(I.withoutBonus(folded, 3).length, folded.length - 1, 'a paycheck with the bonus folded in is left out');
+// The base and bonus paid together on the Mar 13 check, with the data ending
+// soon after: that check was a payday, so the next one is Mar 27.
+const toMarch = { ...payStream, transactions: folded.slice(0, 6) };
+assert.equal(toMarch.transactions.at(-1).amount, 13400);
+for (const end of ['2026-03-16', '2026-04-02']) {
+  const sch = I.schedule(toMarch, A.localTs(end), { bonusMonth: 3 });
+  assert.ok(sch.active, `still paid as of ${end}`);
+  assert.equal(sch.amount, 3400);
+  assert.equal(sch.last, A.localTs('2026-03-13'), 'the combined check was a payday');
+  // within the hour the clocks moved on Mar 8
+  assert.ok(Math.abs(sch.next - Math.max(A.localTs('2026-03-27'), A.localTs(end))) <= 3600000, `next payday as of ${end}`);
+}
+// A bonus on a day of its own does not move the paydays.
+const ownDay = { ...payStream, transactions: [...pay.slice(0, 5), { date: A.fmtDate('2026-03-06'), amount: 10000 }] };
+assert.ok(Math.abs(I.schedule(ownDay, A.localTs('2026-03-09'), { bonusMonth: 3 }).next - A.localTs('2026-03-13')) <= 3600000);
 const oneRaise = { ...payStream, transactions: [...pay.slice(0, -1), { ...pay.at(-1), amount: 3600 }] };
 assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05'), { bonusMonth: 3 }).amount, 3600, 'salary raise shows at once');
 assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05')).amount, 3400, 'other streams wait for a new amount to repeat');
