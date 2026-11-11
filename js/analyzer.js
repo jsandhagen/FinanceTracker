@@ -12,14 +12,16 @@ import { Categorizer } from './categorizer.js';
 
 export const CC_CATEGORY_MAP = {
   'merchandise':         'Shopping',
-  'other services':      'Subscriptions',
+  'other services':      'Other', // barbers, museums, parks, Prime: the names decide (BRAND_RULES)
   'phone/cable':         'Utilities & Bills',
-  'internet':            'Subscriptions',
+  'internet':            'Subscriptions', // where a card files Steam, a domain, a streaming app
   'dining/restaurant':   'Dining',
   'automotive':          'Transportation',
-  'other travel':        'Transportation',
-  'car rental':          'Transportation',
+  'other travel':        'Transportation', // the card's word for rides, tolls, parking
+  'car rental':          'Travel',
   'groceries':           'Groceries',
+  'grocery':             'Groceries',
+  'supermarkets':        'Groceries',
   'gas/automotive':      'Transportation',
   'health care':         'Health',
   'entertainment':       'Entertainment',
@@ -31,42 +33,203 @@ export const CC_CATEGORY_MAP = {
   'airfare':             'Travel',
   'utilities':           'Utilities & Bills',
   'fee/interest charge': 'Fees',
+  'dining':              'Dining',
+  'gas':                 'Transportation',
+  'insurance':           'Insurance',
+  'professional services': 'Other',
 };
 
-// [keywords, category, is_transfer]
+// Trips: lodging, rental cars, flights and the sites that book them. Matched on
+// every row, card and bank, CSV and Plaid, ahead of the category the card or
+// Plaid gave it: a card files a rental car under its own heading, Plaid may
+// file a stay as a general service, and a booking through Capital One Travel
+// is a trip whatever the card calls it. Names that could be something else
+// carry a second word: 'delta air' (Delta Dental), 'alamo rent' (the Alamo
+// Drafthouse), 'avis rent' (Avista, a utility), 'hopper.com' (grasshopper).
+export const TRAVEL_KEYWORDS = [
+  // stays
+  'airbnb', 'vrbo', 'homeaway', 'booking.com', 'hotels.com', 'expedia', 'priceline', 'hotwire',
+  'kayak.com', 'hopper.com', 'travelocity', 'orbitz', 'agoda', 'trivago', 'marriott', 'hilton', 'hyatt',
+  'westin', 'sheraton', 'courtyard by', 'residence inn', 'fairfield inn', 'springhill suites',
+  'holiday inn', 'hampton inn', 'embassy suites', 'doubletree', 'best western', 'wyndham',
+  'la quinta', 'motel 6', 'red roof', 'comfort inn', 'ihg', 'hotel', 'resort', 'hostel',
+  // cars
+  'sixt', 'enterprise rent', 'enterprise car', 'enterprise.com', 'hertz', 'avis rent', 'avis car', 'avis.com', 'avis budget', 'budget rent',
+  'budget car', 'national car', 'alamo rent', 'alamo car', 'goalamo', 'thrifty car', 'dollar rent', 'turo', 'zipcar', 'car rental',
+  'rent-a-car', 'rent a car',
+  // flights and trains
+  'delta air', 'united air', 'united.com', 'american air', 'southwest air', 'jetblue', 'spirit air',
+  'frontier air', 'alaska air', 'allegiant', 'sun country', 'breeze air', 'air canada',
+  'british airways', 'lufthansa', 'air france', 'klm', 'airline', 'airways', 'amtrak',
+  'global entry', 'tsa precheck',
+  // park entry and passes: paid on trips
+  /(^|[^a-z])or parks\b/, /\bstate parks?\b/, 'national park', 'albertaparks', 'alberta parks',
+  'parks canada', 'parkscanada', 'recreation.gov', 'recreation gov', 'nps.gov',
+  // Capital One Travel: flights (COTFLT), hotels (COTHTL), cars and the rest
+  // (COT*FLT, COT*HTL, COT*LCH on a card export; COTFLT where the * is stripped)
+  'capital one travel', 'capitalone travel', 'cap one travel', 'c1 travel', 'capital 1 lounge',
+  'cotflt', 'cothtl', 'cotcar', 'cotrnt', /(^|[^a-z0-9])cot\*/,
+];
+export const isTravel = text => {
+  const d = String(text || '').toLowerCase();
+  return TRAVEL_KEYWORDS.some(k => hasKeyword(d, k));
+};
+
+// Grocery stores and grocery delivery, by name, on every row like travel above:
+// a card can file a supermarket under Merchandise, and a bank account has no
+// category at all. Stores that sell everything (Target, Walmart, Costco) stay
+// Shopping. The pump or pharmacy at a grocery store is not groceries
+// (NOT_GROCERY), and is left to the other rules.
+export const GROCERY_KEYWORDS = [
+  'trader joe', 'whole foods', 'wholefds', 'safeway', 'kroger', 'aldi', 'lidl', 'publix',
+  /(^|[^a-z0-9])h ?-?mart\b/, 'fred-meyer', 'new seasons', 'manzanita fresh', 'harvest foods',
+  'migros', /(^|[^a-z0-9])coop(\b|-)/, 'carrefour', 'crf mkt', 'esselunga', 'conad', 'rewe',
+  'edeka', 'tesco', 'sainsbury', 'loblaws', 'save-on-foods', 'no frills',
+  'giant', 'harris teeter', 'wegmans', 'food lion', 'sprouts', 'h-e-b', 'heb ', 'meijer', 'hy-vee',
+  'stop & shop', 'stop and shop', 'shoprite', 'albertsons', 'vons', 'ralphs', 'fred meyer',
+  'winco', 'piggly wiggly', 'weis market', 'market basket', 'hannaford', 'the fresh market',
+  'fresh thyme', 'earth fare', 'natural grocers', 'mom s organic', 'moms organic',
+  'lotte plaza', 'patel brothers', '99 ranch', 'marufuji', 'yami.com', 'weee!', 'sayweee', 'grocery outlet', 'save a lot', 'food 4 less',
+  'smart & final', 'winn-dixie', 'winn dixie', 'ingles market', 'bi-lo', 'shoppers food', 'amazon fresh',
+  'instacart', 'shipt', 'grocery', 'supermarket',
+  // drink bought to take home
+  'abc store', 'liquor', 'total wine', 'bevmo', 'wine & spirits', 'wine and spirits',
+];
+const NOT_GROCERY = /fuel|gasoline|\bgas\b|pharmacy|\brx\b/i;
+export const isGrocery = text => {
+  const d = String(text || '').toLowerCase();
+  return !NOT_GROCERY.test(d) && GROCERY_KEYWORDS.some(k => hasKeyword(d, k));
+};
+
+// Brands whose name says what they are, whichever account paid them. They
+// decide on card rows too (see baseCategory), where otherwise the card's own
+// category would: a card files a streaming service under "Other Services" or
+// "Entertainment", a pharmacy under "Merchandise", and Plaid and a CSV export
+// disagree about the same charge. Only names that cannot be much else are
+// here; the generic words ('coffee', 'parking') stay in the bank-only rules
+// below. Stores that sell everything are left out on purpose: a card that says
+// a Walmart trip was groceries knows better than the name.
+// [keywords, category, unless]
+export const BRAND_RULES = [
+  [['uber eats', 'ubereats', 'uber *eats', 'doordash', 'dd *doordash', 'grubhub', 'seamless',
+    'postmates', 'tst*', 'starbucks', 'dunkin', 'chipotle', 'mcdonald', 'chick-fil-a', 'panera',
+    'sweetgreen', 'cava ', 'five guys', 'shake shack', 'wendy s', 'wendys', 'taco bell', 'burger king',
+    'popeyes', 'kfc', 'domino s', 'dominos', 'papa john', 'pizza hut', 'jersey mike', 'jimmy john',
+    'firehouse sub', 'wingstop', 'panda express', 'qdoba', 'potbelly', 'dutch bros', 'tim hortons',
+    'buffalo wild', 'olive garden', 'applebee', 'chili s', 'ihop', 'denny s', 'waffle house',
+    'cracker barrel', 'texas roadhouse', 'cheesecake factory', 'in-n-out', 'whataburger',
+    'arby s', 'zaxby', 'raising cane', 'bojangles', 'cook out', 'pret a manger', 'blue bottle',
+    'peet s coffee', 'caribou coffee'], 'Dining'],
+  [['netflix', 'spotify', 'hulu', 'disneyplus', 'disney plus', 'hbo max', 'max.com', 'peacock',
+    'paramount+', 'paramountplus', 'youtube premium', 'youtubepremium', 'youtube tv', 'apple.com/bill',
+    'itunes', 'icloud', 'apple music', 'amazon prime', 'prime video', 'primevideo', 'audible',
+    'kindle unl', 'sling.com', 'sling tv', 'crunchyroll', 'siriusxm', 'sirius xm', 'nytimes',
+    'ny times', 'wsj', 'washpost', 'washington post', 'patreon', 'dropbox', 'adobe', 'microsoft 365',
+    'google storage', 'google one', 'openai', 'chatgpt', 'claude.ai', 'anthropic', 'github',
+    'notion.so', '1password', 'lastpass', 'nordvpn', 'expressvpn', 'duolingo', 'headspace',
+    'calm.com', 'nba league pass', 'porkbun', 'tidal.com', 'fox one', 'foxone', 'linkedinpre',
+    'linkedin premium', 'playstation', 'nintendo', 'xbox', 'steamgames',
+    'steampowered', 'steam purchase'], 'Subscriptions'],
+  [['uber trip', 'uber *trip', 'lyft', 'wmata', 'smartrip', 'ez pass', 'e-zpass', 'ezpass',
+    'e zpass', 'parkmobile', 'spothero', 'laz parking', 'shell oil', 'shell service', 'exxon',
+    'mobil ', 'chevron', 'sunoco', 'valero', 'citgo', 'marathon petro', 'bp#', 'costco gas',
+    'sams club fuel', 'sam s club fuel', 'bjs gas', 'bj s gas', 'tesla supercharger', 'chargepoint',
+    'electrify america', 'evgo', 'jiffy lube', 'valvoline', 'pep boys', 'autozone', 'advance auto',
+    'o reilly auto', 'discount tire', 'dmv', 'dept of motor'], 'Transportation'],
+  [['dominion energy', 'dominion va', 'pepco', 'bge', 'novec', 'washington gas', 'comcast',
+    'xfinity', 'verizon', 'fios', 'at&t', 'att*', 't-mobile', 'tmobile', 'spectrum', 'cox comm',
+    'google fi', 'mint mobile', 'visible service', 'visible wireless', 'cricket wireless',
+    'metropcs', 'metro by t', 'fairfax water', 'loudoun water', 'dc water', 'waste management',
+    'republic services'], 'Utilities & Bills'],
+  [['geico', 'allstate', 'state farm', 'progressive', 'prog universal', 'liberty mutual',
+    'nationwide', 'travelers ins', 'farmers ins', 'lemonade', 'root insurance', 'metlife', 'aflac',
+    'ins prem', 'insurance'], 'Insurance'],
+  [['cvs', 'walgreens', 'rite aid', 'pharmacy', 'quest diag', 'labcorp', 'urgent care', 'kaiser',
+    'one medical', 'zocdoc', 'minuteclinic', 'lenscrafters', 'warby parker', 'planet fitness',
+    'orangetheory', 'equinox', 'la fitness', 'crunch fitness', 'gold s gym', 'lifetime fitness',
+    'f45', 'solidcore', 'classpass', 'peloton', 'dental', 'dentist', 'orthodont', 'dermatolog',
+    'pediatric', 'hospital', 'medical', 'fitness', /(^|[^a-z0-9])gym\b/], 'Health'],
+  [['amc theatre', 'amc theater', 'regal cinema', 'cinemark', 'alamo drafthouse', 'fandango',
+    'ticketmaster', 'stubhub', 'seatgeek', 'eventbrite', 'live nation', 'topgolf', 'bowlero',
+    'dave & buster', 'dave and buster', 'museum', 'imax', 'planetarium', 'japanese gard',
+    'botanical gard', 'arboretum', 'aquarium'], 'Entertainment'],
+  [['tuition', 'coursera', 'udemy', 'chegg', 'masterclass'], 'Education'],
+];
+export function brandCategory(text) {
+  const d = String(text || '').toLowerCase();
+  for (const [kws, cat, unless] of BRAND_RULES) if (kws.some(k => hasKeyword(d, k)) && !unless?.test(d)) return cat;
+  return null;
+}
+
+// Card categories too broad to trust over a merchant's name. A Capital One card
+// files supermarkets as Merchandise, streaming as Phone/Cable or Internet,
+// barbers and museums as Other Services, gyms as Entertainment.
+const VAGUE_CARD = new Set(['Shopping', 'Other', 'Subscriptions', 'Utilities & Bills', 'Entertainment']);
+// A café or bakery the card calls Merchandise.
+const CARD_FOOD = ['coffee', 'bakery', 'cafe', 'caffe', 'restaurant', 'ristorante', 'trattoria',
+  'pizza', 'sushi', 'bistro', 'brewing', 'tavern', 'doughnut', 'donut'];
+const cardFood = text => (CARD_FOOD.some(k => hasKeyword(String(text).toLowerCase(), k)) ? 'Dining' : null);
+
+// A keyword is matched anywhere in the text when it is long, or at the start of
+// a word when short (see hasKeyword); a RegExp is used as it is.
+// [keywords, category, is_transfer, unless]
 export const CHECKING_KEYWORD_RULES = [
   [['payroll', 'salary', 'direct dep', 'federal home loa', 'biweekly'], 'Income', false],
-  [['venmo cashout', 'zelle deposit', 'cashapp deposit'], 'Income', false],
+  [['venmo cashout', 'zelle deposit', 'zelle money received', 'zelle from', 'cashapp deposit',
+    'cash app cashout'], 'Income', false],
+  // A tax refund is withholding coming back: it counts as income, as the pay did.
+  [['irs treas', 'tax ref', 'taxrfd'], 'Income', false],
+  // 360 Checking pays interest too.
+  [['monthly interest paid', 'interest paid'], 'Interest Income', false],
 
   [['360 performance savings', '360 savings', '360 money market', '360 checking',
     'transfer to savings', 'transfer from savings'], 'Savings Transfer', true],
+  // Money moved to your own investment or retirement accounts is kept, not
+  // spent, and money taken out of them is not earned.
+  [['vanguard', 'fidelity', 'schwab', 'robinhood', 'coinbase', 'betterment', 'wealthfront',
+    'acorns', 'm1 finance', 'etrade', 'e*trade', 'webull', 'merrill', 'stash invest', 'public.com',
+    'empower retirement', 'tiaa', 'fundrise', 'treasurydirect', 'treasury direct', 'ally invest',
+    'sofi invest', 'interactive brokers', 'ibkr'], 'Investment Transfer', true],
   [['capital one mobile pmt', 'capital one crcardpmt', 'bk of amer', 'bank of amer', 'bofa',
-    'chase pmt', 'credit card pmt', 'citi card', 'discover pmt'], 'Credit Card Payment', true],
-  [['student loan', 'loan pmt', 'sallie mae', 'navient',
-    'first community credit', 'community credit union',
+    'chase pmt', 'chase credit crd', 'credit card pmt', 'citi card', 'citi autopay', 'discover pmt',
+    'discover e-payment', 'amex epayment', 'american express', 'applecard', 'apple card',
+    'gs bank', 'synchrony', 'barclaycard', 'wells fargo card', 'usaa credit', 'usaa cc'], 'Credit Card Payment', true],
+  [['student loan', 'loan pmt', 'sallie mae', 'navient', 'nelnet', 'mohela', 'aidvantage',
+    'first community credit', 'community credit union', 'auto loan', 'car loan', 'toyota financial',
+    'toyota motor cr', 'honda finance', 'american honda', 'ally auto', 'tesla finance',
     'preauthorized withdrawal to first'], 'Loan Payment', true],
-  [['venmo payment', 'zelle payment', 'zelle money sent', 'cashapp pay', 'paypal'], 'P2P Transfer', true],
+  // PayPal alone is usually a purchase ("PAYPAL *NETFLIX"), filed by the rules
+  // below; only a transfer to or from a person is a P2P move.
+  [['venmo payment', 'zelle payment', 'zelle money sent', 'zelle to', 'cashapp pay', 'cash app*',
+    'apple cash', 'paypal inst xfer', 'paypal transfer', 'paypal xfer'], 'P2P Transfer', true],
 
-  [['amazon', 'ebay', 'etsy', 'walmart', 'target', 'best buy', 'costco', 'oregon kicks'], 'Shopping', false],
-  [['netflix', 'spotify', 'hulu', 'disney', 'hbo', 'peacock', 'apple',
-    'youtube premium', 'steam', 'playstation', 'nintendo', 'xbox',
-    'nba league pass', 'porkbun'], 'Subscriptions', false],
-  [['uber eats', 'ubereats', 'uber *eats'], 'Dining', false],
-  [['uber', 'lyft', 'metro', 'transit', 'parking', 'shell', 'exxon', 'bp ',
-    'chevron', 'sunoco', 'wawa gas', 'marathon', 'sixt'], 'Transportation', false],
-  [['safeway', 'kroger', 'whole foods', 'trader joe', 'aldi', 'publix', 'giant',
-    'harris teeter', 'wegmans', 'food lion', 'grocery'], 'Groceries', false],
-  [['doordash', 'grubhub', 'ubereats', 'seamless', 'chipotle', 'mcdonald',
-    'starbucks', 'coffee', 'restaurant', 'pizza', 'sushi', 'burger', 'taco',
-    'subway', 'chick-fil-a', 'panera'], 'Dining', false],
-  [['dominion', 'dominion energy', 'electric', 'comcast', 'verizon',
-    'at&t', 'tmobile', 'spectrum', 'water bill', 'gas bill', 'billpay',
-    'fairfax va coun', 'pp-echeck', 'washington gas'], 'Utilities & Bills', false],
-  [['rent', 'mortgage', 'hoa', 'property'], 'Housing', false],
-  [['usaa', 'geico', 'allstate', 'state farm', 'progressive', 'prog universal',
-    'insurance', 'ins prem'], 'Insurance', false],
-  [['doctor', 'hospital', 'pharmacy', 'cvs', 'walgreens', 'medical', 'dental',
-    'health', 'gym', 'fitness', 'planet fitness'], 'Health', false],
+  // Ahead of the rest: 'rent' (Housing) is in "RENT-A-CAR", 'amazon' could be
+  // a booking, and Uber or parking on a trip is still a ride.
+  [TRAVEL_KEYWORDS, 'Travel', false],
+  // Before Shopping, which would take "AMAZON FRESH".
+  [GROCERY_KEYWORDS, 'Groceries', false, NOT_GROCERY],
+  // Before Shopping too: "AMAZON PRIME" is a subscription, "COSTCO GAS" fuel.
+  ...BRAND_RULES.map(([kws, cat, unless]) => [kws, cat, false, unless]),
+
+  // Pay-later plans: the payments are the only trace of what was bought.
+  [['amazon', 'ebay', 'etsy', 'walmart', 'target', 'best buy', 'costco', 'oregon kicks',
+    'apple store', 'apple online', 'home depot', 'lowe s', 'lowes', 'ikea', 'tj maxx', 'tjmaxx',
+    'marshalls', 'homegoods', 'old navy', 'kohl s', 'macy s', 'nordstrom', 'sephora', 'ulta',
+    'rent the runway', 'renttherunway',
+    'affirm', 'klarna', 'afterpay', 'sezzle', 'paypal'], 'Shopping', false],
+  [['uber', 'metro', 'transit', 'parking', 'shell', 'bp ', 'wawa gas', 'marathon', 'sheetz',
+    'speedway', 'circle k', 'royal farms', 'gas station'], 'Transportation', false],
+  [['coffee', 'restaurant', 'pizza', 'sushi', 'burger', 'taco', 'subway', 'grill', 'bistro',
+    'cafe', 'kitchen', 'diner', 'bakery', 'brewing', 'tavern', 'pub '], 'Dining', false],
+  [['dominion', 'electric', 'water bill', 'gas bill', 'billpay', 'fairfax va coun', 'pp-echeck'], 'Utilities & Bills', false],
+  [[/\brent\b/, 'mortgage', 'hoa', 'property', 'rentcafe', 'bilt rent', 'bilt rewards', 'yardi', 'appfolio', 'entrata',
+    'clickpay', 'apartment'], 'Housing', false],
+  [['usaa'], 'Insurance', false],
+  [['doctor', 'health', 'gym', 'fitness'], 'Health', false],
+  [['overdraft', 'nsf fee', 'atm fee', 'foreign transaction fee', 'service fee', 'late fee',
+    'annual fee'], 'Fees', false],
+  // Cash is spent, on what nobody knows.
+  [['atm withdrawal', 'atm cash', 'cash withdrawal'], 'Other', false],
 ];
 
 export const SAVINGS_KEYWORD_RULES = [
@@ -77,7 +240,7 @@ export const SAVINGS_KEYWORD_RULES = [
 ];
 
 export const TRANSFER_CATEGORIES = new Set([
-  'Savings Transfer', 'Credit Card Payment', 'Loan Payment', 'P2P Transfer', 'Payment',
+  'Savings Transfer', 'Investment Transfer', 'Credit Card Payment', 'Loan Payment', 'P2P Transfer', 'Payment',
 ]);
 
 // A deposit filed under one of these is money coming back, not money earned.
@@ -90,6 +253,7 @@ const CARD_PAYMENT_RE = /\bpayment\b|\bpymt\b|\bpmt\b|auto ?pay|thank you/i;
 const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const matchers = new Map();
 function hasKeyword(text, kw) {
+  if (kw instanceof RegExp) return kw.test(text);
   if (kw.trim().length > 4) return text.includes(kw);
   let re = matchers.get(kw);
   if (!re) matchers.set(kw, re = new RegExp('(^|[^a-z0-9])' + escRe(kw)));
@@ -104,7 +268,7 @@ export const ALL_CATS = [
 
 export function seedExamples() {
   const ex = [];
-  for (const [kws, cat] of CHECKING_KEYWORD_RULES) for (const k of kws) ex.push([k, cat]);
+  for (const [kws, cat] of CHECKING_KEYWORD_RULES) for (const k of kws) if (typeof k === 'string') ex.push([k, cat]);
   for (const [kws, cat] of SAVINGS_KEYWORD_RULES) for (const k of kws) ex.push([k, cat]);
   for (const [raw, cat] of Object.entries(CC_CATEGORY_MAP)) ex.push([raw, cat]);
   return ex;
@@ -123,6 +287,9 @@ export const PLAID_CATEGORY_MAP = {
   TRANSFER_OUT: 'P2P Transfer',
   TRANSFER_OUT_ACCOUNT_TRANSFER: 'Savings Transfer',
   TRANSFER_OUT_SAVINGS: 'Savings Transfer',
+  TRANSFER_IN_INVESTMENT_AND_RETIREMENT_FUNDS: 'Investment Transfer',
+  TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS: 'Investment Transfer',
+  TRANSFER_OUT_WITHDRAWAL: 'Other', // cash from an ATM is spent, on what nobody knows
   LOAN_PAYMENTS: 'Loan Payment',
   LOAN_PAYMENTS_CREDIT_CARD_PAYMENT: 'Credit Card Payment',
   LOAN_PAYMENTS_MORTGAGE_PAYMENT: 'Housing',
@@ -357,17 +524,26 @@ function baseCategory(t, ml) {
     // paid, whatever category Plaid gave it. Left as a refund it would come
     // off spending, and a month's card bill would vanish from the totals.
     if (viaPlaid && t.amount > 0 && !TRANSFER_CATEGORIES.has(cat) && CARD_PAYMENT_RE.test(t.description)) cat = 'Credit Card Payment';
-    const up = t.description.toUpperCase();
-    if (up.includes('COTFLT') || up.includes('COTHTL')) cat = 'Travel';
+    // A travel credit (Capital One Travel's yearly one, say) is filed as a
+    // payment by the card, but it is money back on a trip, not the bill paid.
+    const paidBill = TRANSFER_CATEGORIES.has(cat) && (cat !== 'Payment' || CARD_PAYMENT_RE.test(t.description));
+    // A trip is a trip whatever the card says, unless it says a meal (the
+    // restaurant in a hotel). Other names only replace a vague category: a
+    // card that says fuel, a pharmacy or a meal knows better than the name.
+    if (!paidBill && cat !== 'Dining' && isTravel(t.description)) cat = 'Travel';
+    else if (VAGUE_CARD.has(cat) || !ALL_CATS.includes(cat) && !TRANSFER_CATEGORIES.has(cat)) {
+      cat = (isGrocery(t.description) && 'Groceries') || brandCategory(t.description) || cardFood(t.description) || cat;
+    }
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
   }
   const d = t.description.toLowerCase();
   const table = t.kind === 'savings' ? SAVINGS_KEYWORD_RULES : CHECKING_KEYWORD_RULES;
-  for (const [kws, cat, isXfr] of table) {
-    if (kws.some(k => hasKeyword(d, k))) {
+  for (const [kws, cat, isXfr, unless] of table) {
+    if (kws.some(k => hasKeyword(d, k)) && !unless?.test(d)) {
       return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat), false];
     }
   }
+
   // The keyword rules above know this bank's own wording (what a card payment
   // or a move to savings looks like); Plaid's category covers the rest.
   if (plaidCat) return [plaidCat, TRANSFER_CATEGORIES.has(plaidCat), false];

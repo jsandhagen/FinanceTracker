@@ -55,6 +55,20 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 - **Refreshing is one click.** The top bar shows how old the data is; **Refresh data** shows how
   far behind each account is and what date range to export. In Chrome or Edge on a computer the
   app can watch your downloads folder and import new exports by itself (see below).
+- **Trips are Travel.** Airbnb, Vrbo, hotels, rental cars (Sixt, Enterprise, Hertz, Avis…),
+  airlines, booking sites and Capital One Travel are filed under Travel by name, whatever the card
+  or bank called them. A Capital One travel credit comes off Travel. Grocery stores (Trader Joe's,
+  Whole Foods, Aldi, Giant, Safeway, Wegmans, Instacart…) are Groceries the same way, except their
+  gas pumps and pharmacies; Target, Walmart and Costco stay Shopping.
+- **Brands are filed by name on cards too.** Streaming services, restaurant chains, gas brands,
+  utilities, insurers, pharmacies and gyms land in the same category whether they were paid by card
+  or from checking, and whether the data came from a CSV or Plaid. A card's own specific category
+  (a Walmart run it calls Grocery) is kept.
+- **Money that is not spending or income is kept out.** Contributions to Vanguard, Fidelity,
+  Schwab, Robinhood and the like are Investment Transfers. A PayPal purchase counts as spending,
+  and only a PayPal transfer to a person is a transfer. Affirm, Klarna and Afterpay payments
+  count as Shopping, because they are the only record of what was bought. ATM cash counts as
+  spending (Other).
 - **Refunds are not income.** Money back on a card comes off spending in its category. Payments
   to the card and moves between your own accounts count as neither income nor spending.
 - **Rules stick.** Tap a category in the transactions table to recategorize a merchant (or one
@@ -194,9 +208,13 @@ node tests/income.test.mjs
 node tests/plaid.test.mjs
 ```
 
-The one deliberate difference from the Python version is the auto-categorizer: scikit-learn's
-logistic regression became a nearest-neighbour match over the same TF-IDF character n-grams
-(`js/categorizer.js`), which needs no training step in the browser.
+Deliberate differences from the Python version: the auto-categorizer (scikit-learn's logistic
+regression became a nearest-neighbour match over the same TF-IDF character n-grams in
+`js/categorizer.js`, which needs no training step in the browser), and trips (lodging, rental cars,
+flights, Capital One Travel) and grocery stores are filed by name on every row (`TRAVEL_KEYWORDS`
+and `GROCERY_KEYWORDS` in `js/analyzer.js`), where the Python version followed the card's own
+category. Fixtures with
+rental cars or travel-named merchants will differ in the parity test for that reason.
 
 ### Shipping a change
 
