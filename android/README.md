@@ -125,16 +125,40 @@ connection (that repairs the same Item) rather than removing it and connecting a
 and Bank of America also have to approve an app for their own sign-in; the dashboard shows that
 status per institution.
 
-## What is stored where
+## What is stored where, and how it survives
 
 - **Plaid client_id and secret:** encrypted with AES-256-GCM under a key generated inside the
   Android Keystore, which cannot be taken off the device. Only the ciphertext is written to the
-  app's storage. They are not synced and not in backups, and they are sent to Plaid only.
+  app's storage. They are sent to Plaid only, and are never in a backup file. With sync on, they
+  are also in the sync copy, encrypted with your passphrase, so that a reinstall can get them
+  back.
 - **Each bank's access token:** with the rest of your data (see below), and in the encrypted sync
   copy so another device can fetch too. Without the secret it opens nothing.
 - **Transactions, rules, settings:** the app's own storage on the phone (IndexedDB), as on the
   website. Android's cloud backup and device-to-device transfer are switched off for this app, so
   nothing reaches Google; use the app's sync or **Download backup** to move data.
+
+### Updates never lose data
+
+An update keeps everything, the Plaid keys included, and this is guarded at each step:
+
+- **Only an update that can install over the app is published.** The build workflow refuses to
+  publish a build that is not signed with the app's key (its certificate fingerprint is checked)
+  or not numbered above the last one. Version numbers are minutes since 2026, so they only grow.
+- **The app checks the download too.** It refuses an update signed with another key and tells you
+  not to uninstall to get it.
+- **Where the data lives is pinned.** The app's storage belongs to its package id and its internal
+  address (`https://localhost`); both are fixed in `capacitor.config.json`, and a test fails if
+  either changes.
+- **The keys are never thrown away.** If the Keystore cannot be read for a moment (it can be slow
+  right after a restart), the app says so and keeps them; it never treats that as "no keys".
+- **One more copy first.** With sync on, the app syncs before handing an update to the installer.
+
+What updates cannot protect against is removing the app. Two things soften that: on Android 10
+and later, uninstalling asks whether to **keep the app's data**, which keeps your transactions;
+and with **sync** on, everything, Plaid keys included, comes back after a reinstall when you enter
+the same token and passphrase. (The Keystore itself is always wiped with the app, which is why the
+keys travel in the encrypted sync copy.) Turn sync on.
 
 ## Known gaps
 

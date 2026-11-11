@@ -2002,11 +2002,17 @@ const ago = ts => {
 function renderPlaid(status = '') {
   const el = $('plaid-body'), items = plaidItems();
   if (demo) { el.innerHTML = '<p>Bank connections are switched off in the demo.</p>'; return; }
+  if (!state.plaid && state.plaidError) {
+    el.innerHTML = `<p>${esc(state.plaidError.message)} This can happen just after the phone restarts. Nothing has been deleted.</p>
+      <div class="set-row"><button class="btn primary" id="plaid-retry">Try again</button></div>
+      <div class="set-status" id="plaid-status">${esc(status)}</div>`;
+    return;
+  }
   if (!state.plaid) {
     const onDevice = native.isNative();
     const again = items.length ? `${items.length === 1 ? 'A bank connection was' : `${items.length} bank connections were`} set up on another device${onDevice ? '' : ', and what it fetches arrives here through sync'}. Enter the same details here to fetch from ${items.length === 1 ? 'it' : 'them'} too${onDevice ? '' : ' (from a web page that needs a relay)'}. ` : '';
     el.innerHTML = plaidMode === 'direct' || onDevice
-      ? `<p>${again}With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Enter your Plaid keys (Plaid dashboard → Developers → Keys). They are kept on this device only, ${onDevice ? 'encrypted with a key held in the Android Keystore, ' : ''}never synced and never in a backup, and are sent to Plaid and nowhere else.</p>
+      ? `<p>${again}With a Plaid account the app fetches new transactions from your bank by itself: nothing to download. Enter your Plaid keys (Plaid dashboard → Developers → Keys). They are ${onDevice ? 'encrypted with a key held in the Android Keystore and kept through every update; with sync on, they are also in your encrypted sync copy, so a reinstall gets them back. They are never in a backup file' : 'kept on this device only, never synced and never in a backup'}, and are sent to Plaid and nowhere else.</p>
       <form class="plaid-form" id="plaid-form">
         <input class="set-input" id="plaid-client" type="text" placeholder="Plaid client_id" autocomplete="off" spellcheck="false" />
         <input class="set-input" id="plaid-secret" type="password" placeholder="Plaid secret" autocomplete="off" />
@@ -2168,6 +2174,12 @@ $('plaid-body').addEventListener('click', async ev => {
   const fix = ev.target.closest('[data-plaid-fix]'), rm = ev.target.closest('[data-plaid-remove]'), mode = ev.target.closest('[data-plaid-mode]');
   if (mode) { plaidMode = mode.dataset.plaidMode; renderPlaid(); }
   else if (ev.target.closest('#plaid-sync')) plaidSync();
+  else if (ev.target.closest('#plaid-retry')) {
+    try { state.plaid = await store.getPlaid(); state.plaidError = null; }
+    catch (e) { state.plaidError = e; renderPlaid('Still could not read them. Close the app completely and open it again.'); return; }
+    renderPlaid();
+    if (state.plaid && plaidItems().length) plaidSync();
+  }
   else if (ev.target.closest('#plaid-add')) plaidLink();
   else if (fix) plaidLink(plaidItems().find(it => it.id === fix.dataset.plaidFix));
   else if (rm) {
@@ -2287,6 +2299,11 @@ $('import-rules').addEventListener('change', async e => {
 function snapshot() {
   return { transactions: state.transactions, rules: state.rules, training: state.training, settings: state.settings, meta: state.meta };
 }
+// What sync carries beyond a backup: the Android app's Plaid keys, so that a
+// reinstall (which loses the Keystore) gets them back. Only inside the
+// passphrase-encrypted sync copy, never in a backup file, and only taken up by
+// the Android app; a browser leaves them where they are.
+const syncSecrets = () => (native.isNative() && state.plaid ? { secrets: { plaid: state.plaid } } : {});
 
 $('export-backup').addEventListener('click', () => {
   if (demo) { toast('This is demo data. Exit the demo to back up your own.'); return; }
@@ -2378,7 +2395,16 @@ async function syncNow({ quiet = false } = {}) {
       && remote.transactions.length === state.transactions.length
       && (remote.meta?.rulesUpdatedAt || 0) === state.meta.rulesUpdatedAt
       && (remote.meta?.updatedAt || 0) === state.meta.updatedAt;
-    if (!remoteUpToDate) gistId = await sync.push(token, gistId, passphrase, snapshot());
+    // Keys from another install of the app fill in missing ones here; they
+    // never replace keys this device has, nor ones it cannot read right now.
+    const theirs = remote?.secrets?.plaid;
+    if (native.isNative() && theirs && !state.plaid && !state.plaidError) {
+      await store.setPlaid(theirs);
+      state.plaid = theirs;
+      renderPlaid();
+    }
+    const secretsSynced = !native.isNative() || !state.plaid || JSON.stringify(theirs) === JSON.stringify(state.plaid);
+    if (!remoteUpToDate || !secretsSynced) gistId = await sync.push(token, gistId, passphrase, { ...snapshot(), ...(native.isNative() ? syncSecrets() : remote?.secrets ? { secrets: remote.secrets } : {}) });
 
     state.sync = { ...state.sync, gistId, lastSync: Date.now() };
     await store.set('sync', state.sync);
@@ -2651,6 +2677,8 @@ async function installAppUpdate() {
       await native.update.allowInstalls();
       return;
     }
+    // Updates keep everything; a fresh sync copy first all the same.
+    if (state.sync) await syncNow({ quiet: true });
     toast('Downloading the update…');
     await native.update.install(appNewer.url);
   } catch (e) {

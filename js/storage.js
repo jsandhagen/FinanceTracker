@@ -4,9 +4,11 @@
 //   training      [{ text, category }]
 //   settings      { cc_start }
 //   sync          { token, passphrase, gistId, lastSync }   (never synced itself)
-//   plaid         { mode: 'direct', clientId, secret, env } or { url, key } for a relay (never synced).
-//                 In the Android app this is not kept here at all but encrypted
-//                 with a key in the Android Keystore (see getPlaid).
+//   plaid         { mode: 'direct', clientId, secret, env } or { url, key } for a relay.
+//                 In a browser, kept here and never synced. In the Android app,
+//                 not kept here at all but encrypted with a key in the Android
+//                 Keystore (see getPlaid), and carried in the encrypted sync
+//                 copy so a reinstall gets it back. Never in a backup file.
 //   meta          { updatedAt, rulesUpdatedAt }
 
 import * as native from './native.js';
@@ -45,6 +47,9 @@ export const del = key => tx('readwrite', s => s.delete(key));
 // How Plaid is reached, which includes the Plaid secret. A browser has nowhere
 // better than IndexedDB. The Android app keeps it encrypted under a Keystore
 // key instead, and moves over anything an earlier build left in IndexedDB.
+// A copy left in IndexedDB is removed only once the Keystore copy reads back.
+// If the Keystore cannot be read right now, this throws (code UNREADABLE):
+// callers must not take that as "no keys" and write over them.
 export async function getPlaid() {
   if (!native.isNative()) return (await get('plaid')) || null;
   const kept = await native.secure.get('plaid');
@@ -52,7 +57,7 @@ export async function getPlaid() {
   const old = await get('plaid');
   if (!old) return null;
   await native.secure.set('plaid', old);
-  await del('plaid');
+  if (JSON.stringify(await native.secure.get('plaid')) === JSON.stringify(old)) await del('plaid');
   return old;
 }
 export async function setPlaid(conn) {
@@ -66,9 +71,12 @@ export async function delPlaid() {
 }
 
 export async function loadAll() {
+  let plaidError = null;
   const [transactions, rules, training, settings, sync, meta, plaid] = await Promise.all(
-    [...['transactions', 'rules', 'training', 'settings', 'sync', 'meta'].map(get), getPlaid()]);
+    [...['transactions', 'rules', 'training', 'settings', 'sync', 'meta'].map(get),
+      getPlaid().catch(e => { plaidError = e; return null; })]);
   return {
+    plaidError,
     transactions: transactions || [],
     rules: { merchant: {}, amount_rules: [], ...(rules || {}) },
     training: training || [],

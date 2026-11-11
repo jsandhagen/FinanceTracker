@@ -17,7 +17,12 @@ export const isNative = () => !!cap()?.isNativePlatform?.();
 
 async function native(plugin, method, options = {}) {
   try { return await cap().nativePromise(plugin, method, options); }
-  catch (e) { throw e instanceof Error ? e : new Error(e?.message || e?.errorMessage || String(e)); }
+  catch (e) {
+    if (e instanceof Error) throw e;
+    const err = new Error(e?.message || e?.errorMessage || String(e));
+    err.code = e?.code || null;
+    throw err;
+  }
 }
 
 // POSTs JSON and resolves { status, data }, whatever the status. Rejects only

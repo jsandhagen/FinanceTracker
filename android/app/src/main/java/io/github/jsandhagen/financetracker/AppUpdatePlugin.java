@@ -2,6 +2,8 @@ package io.github.jsandhagen.financetracker;
 
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -83,6 +85,13 @@ public class AppUpdatePlugin extends Plugin {
                 if (!dir.exists() && !dir.mkdirs()) throw new java.io.IOException("no room for the download");
                 File apk = new File(dir, "FinanceTracker.apk");
                 download(url, apk);
+                // Android would refuse it anyway; saying so here keeps anyone from
+                // "fixing" that by uninstalling, which would delete the data.
+                if (!sameSigner(apk)) {
+                    apk.delete();
+                    call.reject("This update is not signed with the same key as the app you have, so it was not installed. Do not uninstall the app to get it: your data would go with it.", "WRONG_SIGNER");
+                    return;
+                }
                 Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setDataAndType(uri, "application/vnd.android.package-archive");
@@ -99,6 +108,31 @@ public class AppUpdatePlugin extends Plugin {
                 call.reject("Could not download the update: " + e.getMessage(), e);
             }
         }).start();
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean sameSigner(File apk) throws Exception {
+        PackageManager pm = getContext().getPackageManager();
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
+        PackageInfo mine = pm.getPackageInfo(getContext().getPackageName(), flags);
+        PackageInfo theirs = pm.getPackageArchiveInfo(apk.getPath(), flags);
+        if (theirs == null || !getContext().getPackageName().equals(theirs.packageName)) return false;
+        java.util.Set<String> a = signers(mine), b = signers(theirs);
+        return !a.isEmpty() && a.equals(b);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static java.util.Set<String> signers(PackageInfo p) {
+        Signature[] sigs;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            sigs = p.signingInfo == null ? null
+                : p.signingInfo.hasMultipleSigners() ? p.signingInfo.getApkContentsSigners() : p.signingInfo.getSigningCertificateHistory();
+        } else {
+            sigs = p.signatures;
+        }
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (sigs != null) for (Signature s : sigs) out.add(s.toCharsString());
+        return out;
     }
 
     private static void download(String from, File to) throws Exception {

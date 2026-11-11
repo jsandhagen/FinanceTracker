@@ -423,6 +423,33 @@ globalThis.fetch = realFetch;
   assert.equal(await store.getPlaid(), null);
   assert.equal(vault.size, 0);
 
+  // The Keystore failing to read is not "no keys": nothing is written over or deleted.
+  await store.setPlaid(conn);
+  const realNative = globalThis.Capacitor.nativePromise;
+  globalThis.Capacitor.nativePromise = async (plugin, method, o) => {
+    if (plugin === 'SecureStore' && method === 'get') throw { message: 'Your saved Plaid keys could not be read just now. They are still saved.', code: 'UNREADABLE' };
+    return realNative(plugin, method, o);
+  };
+  await assert.rejects(store.getPlaid(), e => e.code === 'UNREADABLE');
+  const loaded = await store.loadAll();
+  assert.ok(loaded.plaid === null && loaded.plaidError?.code === 'UNREADABLE', 'the app starts, and knows the keys are there but unreadable');
+  assert.ok(vault.has('plaid'), 'still saved');
+  globalThis.Capacitor.nativePromise = realNative;
+  assert.deepEqual(await store.getPlaid(), conn, 'readable again next time');
+  // Moving keys out of IndexedDB deletes the old copy only once the new one reads back.
+  await store.delPlaid();
+  idb.set('plaid', conn);
+  globalThis.Capacitor.nativePromise = async (plugin, method, o) => {
+    if (plugin === 'SecureStore' && method === 'set') return undefined; // pretends to save, keeps nothing
+    return realNative(plugin, method, o);
+  };
+  await store.getPlaid();
+  assert.deepEqual(idb.get('plaid'), conn, 'kept in IndexedDB when the Keystore copy did not take');
+  globalThis.Capacitor.nativePromise = realNative;
+  await store.getPlaid();
+  assert.ok(!idb.has('plaid') && vault.has('plaid'), 'moved once it did');
+  await store.delPlaid();
+
   // A browser keeps using IndexedDB.
   delete globalThis.Capacitor;
   await store.setPlaid(conn);

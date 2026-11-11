@@ -46,4 +46,25 @@ globalThis.Capacitor.nativePromise = async plugin => (plugin === 'CapacitorHttp'
 await assert.rejects(N.update.check(), /404/);
 delete globalThis.Capacitor;
 
+// ── What keeps the data through every update ──
+// The app's data lives under its origin (https://localhost) and its package
+// id. Changing either makes an updated app start empty, so they are pinned and
+// checked here. An update is also kept from wiping or skipping data on Android.
+{
+  const { readFileSync } = await import('node:fs');
+  const cfg = JSON.parse(readFileSync(new URL('../capacitor.config.json', import.meta.url), 'utf8'));
+  assert.equal(cfg.appId, 'io.github.jsandhagen.financetracker', 'the package id is the app: changing it is a different app with no data');
+  assert.equal(cfg.server?.androidScheme, 'https', 'pinned: a different scheme is a different, empty origin');
+  assert.equal(cfg.server?.hostname, 'localhost', 'pinned: a different hostname is a different, empty origin');
+  assert.ok(!cfg.server?.url, 'the app loads its own files, not a website (a different origin, and the keys would be readable by it)');
+  const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+  assert.match(gradle, /applicationId "io\.github\.jsandhagen\.financetracker"/);
+  const manifest = readFileSync(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /android:hasFragileUserData="true"/, 'Android offers to keep the data on uninstall');
+  assert.match(manifest, /android:allowBackup="false"/, 'no Google backup restoring data whose Keystore key did not come with it');
+  const wf = readFileSync(new URL('../.github/workflows/android.yml', import.meta.url), 'utf8');
+  assert.match(wf, /EXPECTED_CERT: c54dffdebc0d806fd3f6ccf98ccf9faffb7377f5d769bd54d2f3291a08d4aa7d/, 'only builds signed like the installed app are published');
+  assert.match(wf, /is not above the published/, 'and only builds numbered above the last');
+}
+
 console.log('native tests passed');
