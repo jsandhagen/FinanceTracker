@@ -20,6 +20,8 @@ export const CC_CATEGORY_MAP = {
   'other travel':        'Transportation', // the card's word for rides, tolls, parking
   'car rental':          'Travel',
   'groceries':           'Groceries',
+  'grocery':             'Groceries',
+  'supermarkets':        'Groceries',
   'gas/automotive':      'Transportation',
   'health care':         'Health',
   'entertainment':       'Entertainment',
@@ -65,7 +67,28 @@ export const isTravel = text => {
   return TRAVEL_KEYWORDS.some(k => hasKeyword(d, k));
 };
 
-// [keywords, category, is_transfer]
+// Grocery stores and grocery delivery, by name, on every row like travel above:
+// a card can file a supermarket under Merchandise, and a bank account has no
+// category at all. Stores that sell everything (Target, Walmart, Costco) stay
+// Shopping. The pump or pharmacy at a grocery store is not groceries
+// (NOT_GROCERY), and is left to the other rules.
+export const GROCERY_KEYWORDS = [
+  'trader joe', 'whole foods', 'wholefds', 'safeway', 'kroger', 'aldi', 'lidl', 'publix',
+  'giant', 'harris teeter', 'wegmans', 'food lion', 'sprouts', 'h-e-b', 'heb ', 'meijer', 'hy-vee',
+  'stop & shop', 'stop and shop', 'shoprite', 'albertsons', 'vons', 'ralphs', 'fred meyer',
+  'winco', 'piggly wiggly', 'weis market', 'market basket', 'hannaford', 'the fresh market',
+  'fresh thyme', 'earth fare', 'natural grocers', 'mom s organic', 'moms organic', 'hmart', 'h-mart',
+  'lotte plaza', 'patel brothers', '99 ranch', 'grocery outlet', 'save a lot', 'food 4 less',
+  'smart & final', 'winn-dixie', 'winn dixie', 'ingles market', 'bi-lo', 'shoppers food', 'amazon fresh',
+  'instacart', 'shipt', 'grocery', 'supermarket',
+];
+const NOT_GROCERY = /\b(fuel|gas|gasoline|pharmacy|rx)\b/i;
+export const isGrocery = text => {
+  const d = String(text || '').toLowerCase();
+  return !NOT_GROCERY.test(d) && GROCERY_KEYWORDS.some(k => hasKeyword(d, k));
+};
+
+// [keywords, category, is_transfer, unless]
 export const CHECKING_KEYWORD_RULES = [
   [['payroll', 'salary', 'direct dep', 'federal home loa', 'biweekly'], 'Income', false],
   [['venmo cashout', 'zelle deposit', 'cashapp deposit'], 'Income', false],
@@ -82,6 +105,8 @@ export const CHECKING_KEYWORD_RULES = [
   // Ahead of the rest: 'rent' (Housing) is in "RENT-A-CAR", 'amazon' could be
   // a booking, and Uber or parking on a trip is still a ride.
   [TRAVEL_KEYWORDS, 'Travel', false],
+  // Before Shopping, which would take "AMAZON FRESH".
+  [GROCERY_KEYWORDS, 'Groceries', false, NOT_GROCERY],
 
   [['amazon', 'ebay', 'etsy', 'walmart', 'target', 'best buy', 'costco', 'oregon kicks'], 'Shopping', false],
   [['netflix', 'spotify', 'hulu', 'disney', 'hbo', 'peacock', 'apple',
@@ -90,8 +115,6 @@ export const CHECKING_KEYWORD_RULES = [
   [['uber eats', 'ubereats', 'uber *eats'], 'Dining', false],
   [['uber', 'lyft', 'metro', 'transit', 'parking', 'shell', 'exxon', 'bp ',
     'chevron', 'sunoco', 'wawa gas', 'marathon'], 'Transportation', false],
-  [['safeway', 'kroger', 'whole foods', 'trader joe', 'aldi', 'publix', 'giant',
-    'harris teeter', 'wegmans', 'food lion', 'grocery'], 'Groceries', false],
   [['doordash', 'grubhub', 'ubereats', 'seamless', 'chipotle', 'mcdonald',
     'starbucks', 'coffee', 'restaurant', 'pizza', 'sushi', 'burger', 'taco',
     'subway', 'chick-fil-a', 'panera'], 'Dining', false],
@@ -397,12 +420,13 @@ function baseCategory(t, ml) {
     // payment by the card, but it is money back on a trip, not the bill paid.
     const paidBill = TRANSFER_CATEGORIES.has(cat) && (cat !== 'Payment' || CARD_PAYMENT_RE.test(t.description));
     if (!paidBill && isTravel(t.description)) cat = 'Travel';
+    else if (!TRANSFER_CATEGORIES.has(cat) && isGrocery(t.description)) cat = 'Groceries';
     return [cat, TRANSFER_CATEGORIES.has(cat), false];
   }
   const d = t.description.toLowerCase();
   const table = t.kind === 'savings' ? SAVINGS_KEYWORD_RULES : CHECKING_KEYWORD_RULES;
-  for (const [kws, cat, isXfr] of table) {
-    if (kws.some(k => hasKeyword(d, k))) {
+  for (const [kws, cat, isXfr, unless] of table) {
+    if (kws.some(k => hasKeyword(d, k)) && !unless?.test(d)) {
       return [cat, t.kind === 'savings' ? isXfr : TRANSFER_CATEGORIES.has(cat), false];
     }
   }

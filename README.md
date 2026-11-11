@@ -57,7 +57,9 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   app can watch your downloads folder and import new exports by itself (see below).
 - **Trips are Travel.** Airbnb, Vrbo, hotels, rental cars (Sixt, Enterprise, Hertz, Avis…),
   airlines, booking sites and Capital One Travel are filed under Travel by name, whatever the card
-  or bank called them. A Capital One travel credit comes off Travel.
+  or bank called them. A Capital One travel credit comes off Travel. Grocery stores (Trader Joe's,
+  Whole Foods, Aldi, Giant, Safeway, Wegmans, Instacart…) are Groceries the same way, except their
+  gas pumps and pharmacies; Target, Walmart and Costco stay Shopping.
 - **Refunds are not income.** Money back on a card comes off spending in its category. Payments
   to the card and moves between your own accounts count as neither income nor spending.
 - **Rules stick.** Tap a category in the transactions table to recategorize a merchant (or one
@@ -200,8 +202,9 @@ node tests/plaid.test.mjs
 Deliberate differences from the Python version: the auto-categorizer (scikit-learn's logistic
 regression became a nearest-neighbour match over the same TF-IDF character n-grams in
 `js/categorizer.js`, which needs no training step in the browser), and trips (lodging, rental cars,
-flights, Capital One Travel) go under Travel by name on every row (`TRAVEL_KEYWORDS` in
-`js/analyzer.js`), where the Python version followed the card's own category. Fixtures with
+flights, Capital One Travel) and grocery stores are filed by name on every row (`TRAVEL_KEYWORDS`
+and `GROCERY_KEYWORDS` in `js/analyzer.js`), where the Python version followed the card's own
+category. Fixtures with
 rental cars or travel-named merchants will differ in the parity test for that reason.
 
 ### Shipping a change

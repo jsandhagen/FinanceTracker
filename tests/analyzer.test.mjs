@@ -120,4 +120,41 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   assert.deepEqual(cat(viaPlaid).map(x => x.category), ['Travel', 'Travel']);
 }
 
+// ── Grocery stores are Groceries ──
+// By name, on a card whatever its category, and on a bank account; the pump and
+// the pharmacy at a grocery store are not groceries.
+{
+  const g = A.parseFile(CARD + [
+    '2026-05-01,2026-05-02,4321,TRADER JOE S #552,Merchandise,48.20,',
+    '2026-05-02,2026-05-03,4321,WHOLEFDS MKT 10234,Merchandise,61.10,',
+    '2026-05-03,2026-05-04,4321,ALDI 72031,Other Services,33.00,',
+    '2026-05-04,2026-05-05,4321,GIANT FOOD #0312,Merchandise,90.00,',
+    '2026-05-05,2026-05-06,4321,GIANT GAS #0312,Gas/Automotive,40.00,',
+    '2026-05-06,2026-05-07,4321,SAFEWAY PHARMACY,Health Care,12.00,',
+    '2026-05-07,2026-05-08,4321,INSTACART,Other Services,80.00,',
+    '2026-05-08,2026-05-09,4321,TARGET 00123,Merchandise,55.00,',
+    '2026-05-09,2026-05-10,4321,JINGLES BAR,Dining/Restaurant,20.00,',
+    '2026-05-10,2026-05-11,4321,TRADER JOE S #552,Merchandise,,10.00',
+  ].join('\n')).transactions;
+  const rows = cat(g);
+  const of = d => rows.find(x => x.description === d && x.amount < 0)?.category;
+  for (const d of ['TRADER JOE S #552', 'WHOLEFDS MKT 10234', 'ALDI 72031', 'GIANT FOOD #0312', 'INSTACART']) assert.equal(of(d), 'Groceries', d);
+  assert.equal(of('GIANT GAS #0312'), 'Transportation', 'the pump is not groceries');
+  assert.equal(of('SAFEWAY PHARMACY'), 'Health', 'nor the pharmacy');
+  assert.equal(of('TARGET 00123'), 'Shopping', 'a store that sells everything stays Shopping');
+  assert.equal(of('JINGLES BAR'), 'Dining');
+  const back = rows.find(x => x.description === 'TRADER JOE S #552' && x.amount > 0);
+  assert.ok(back.refund && back.category === 'Groceries', 'a return comes off Groceries');
+
+  const gb = A.parseFile(BANK + [
+    '1234,Debit Card Purchase - TRADER JOE S #552,05/12/26,Debit,40.00,960.00',
+    '1234,Debit Card Purchase - AMAZON FRESH,05/11/26,Debit,70.00,1000.00',
+    '1234,Debit Card Purchase - AMAZON.COM,05/10/26,Debit,25.00,1070.00',
+  ].join('\n')).transactions;
+  const bo = Object.fromEntries(cat(gb).map(x => [x.description, x.category]));
+  assert.equal(bo['Debit Card Purchase - TRADER JOE S #552'], 'Groceries');
+  assert.equal(bo['Debit Card Purchase - AMAZON FRESH'], 'Groceries', 'Amazon Fresh is groceries');
+  assert.equal(bo['Debit Card Purchase - AMAZON.COM'], 'Shopping', 'the rest of Amazon is not');
+}
+
 console.log('analyzer tests passed');
