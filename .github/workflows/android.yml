@@ -64,8 +64,10 @@ jobs:
         run: |
           BUILD="${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M)"
           echo "APP_VERSION_NAME=$BUILD" >> "$GITHUB_ENV"
-          # Higher on every run, which is what lets a build install over the last.
-          echo "APP_VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          # Android installs a build only over a lower version code. Minutes since
+          # 2026-01-01 only ever grow, whatever happens to run numbers, and stay
+          # far above the run numbers the first builds used.
+          echo "APP_VERSION_CODE=$(( ($(date -u +%s) - 1767225600) / 60 ))" >> "$GITHUB_ENV"
           node tools/build-www.mjs "$BUILD"
           npx cap sync android
 
@@ -116,17 +118,42 @@ jobs:
           path: ${{ runner.temp }}/FinanceTracker.apk
           if-no-files-found: error
 
+      # An update installs over the app, keeping its data, only when it is signed
+      # with the same key and numbered higher. A build that fails either is
+      # never published: the only way to install it would be to uninstall first.
+      - name: Check it can update the installed app
+        if: steps.key.outputs.own == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The certificate the app was first installed with. Public; not a secret.
+          EXPECTED_CERT: c54dffdebc0d806fd3f6ccf98ccf9faffb7377f5d769bd54d2f3291a08d4aa7d
+        run: |
+          GOT=$(tr -d ':' < "$RUNNER_TEMP/sha256.txt" | tr 'A-F' 'a-f')
+          if [ "$GOT" != "$EXPECTED_CERT" ]; then
+            echo "::error::Signed with certificate $GOT, not the app's ($EXPECTED_CERT). Publishing it would strand the installed app. Check the ANDROID_KEYSTORE_* secrets."
+            exit 1
+          fi
+          LIVE=$(gh release download android-latest -p version.json -O - 2>/dev/null | sed -n 's/.*"versionCode":\([0-9]*\).*/\1/p')
+          if [ -n "$LIVE" ] && [ "$APP_VERSION_CODE" -le "$LIVE" ]; then
+            echo "::error::Version code $APP_VERSION_CODE is not above the published $LIVE; Android would refuse it as an update."
+            exit 1
+          fi
+
       - name: Publish as the android-latest release
         if: steps.key.outputs.own == 'true' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOTES="Build $APP_VERSION_NAME (version code $APP_VERSION_CODE). Install steps: android/README.md."
+          # What the app reads to learn a newer build exists (js/native.js).
+          printf '{"versionCode":%s,"versionName":"%s","apk":"FinanceTracker.apk"}\n' "$APP_VERSION_CODE" "$APP_VERSION_NAME" > "$RUNNER_TEMP/version.json"
           if gh release view android-latest >/dev/null 2>&1; then
+            # The APK first: an app that sees the new version.json must find its APK.
             gh release upload android-latest "$RUNNER_TEMP/FinanceTracker.apk" --clobber
+            gh release upload android-latest "$RUNNER_TEMP/version.json" --clobber
             gh release edit android-latest --notes "$NOTES" --target "$GITHUB_SHA"
           else
-            gh release create android-latest "$RUNNER_TEMP/FinanceTracker.apk" --title "FinanceTracker for Android" --notes "$NOTES" --target "$GITHUB_SHA" --prerelease
+            gh release create android-latest "$RUNNER_TEMP/FinanceTracker.apk" "$RUNNER_TEMP/version.json" --title "FinanceTracker for Android" --notes "$NOTES" --target "$GITHUB_SHA" --prerelease
           fi
 
       - name: Summary

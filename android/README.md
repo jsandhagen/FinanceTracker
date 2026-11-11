@@ -19,7 +19,7 @@ What is different from the website:
 | Calls to Plaid | refused by the browser, so a relay is needed | made by Android (`CapacitorHttp`), direct |
 | Plaid Link (bank sign-in) | Plaid's web script and a redirect address | Plaid's Android SDK and the app's package name |
 | Plaid client_id and secret | IndexedDB | encrypted with a key in the Android Keystore |
-| Updates | by itself, on every deploy | install a newer APK over the old one |
+| Updates | by itself, on every deploy | the app offers each new build; **Update**, then Android's **Install** |
 | Saving a backup or export | a download | Android's "save to" screen |
 
 Everything else is one codebase: `index.html`, `css/`, `js/`. The only file that knows about the
@@ -76,7 +76,24 @@ Open the address above in Chrome on the phone, or copy the APK over, and tap it.
 to allow installs from that app (Chrome, or your file manager): allow it, then **Install**. Play
 Protect may offer to scan an app it has not seen before; that is fine.
 
-To update, install the newer APK the same way. Your data stays.
+After that the app updates itself, with your go-ahead:
+
+- When it opens (and every few hours while in use) it looks at the `android-latest` release. A
+  newer build shows **A new version of the app is ready · Update**; it is also under
+  **Settings → App version**, where **Check for updates** looks straight away.
+- **Update** downloads it and Android's own installer asks you to confirm. The very first time,
+  Android first asks you to let FinanceTracker install apps ("Allow from this source"); come back
+  and tap **Update** again.
+- Android installs it only if it is signed with the same key as the app you have, so a download
+  that was tampered with cannot replace it. Your data and Plaid keys stay.
+
+Android does not let a sideloaded app replace itself without that one tap. For updates with no
+tap at all, install the app through [Obtainium](https://github.com/ImranR98/Obtainium) instead,
+pointed at this repository's releases: on Android 12 and later it updates apps it installed in
+the background.
+
+Each build from `main` is published with a `version.json` beside the APK; that is what the app
+reads. A build from before the update button existed has to be replaced by hand once.
 
 ### 4. Plaid
 
@@ -108,22 +125,46 @@ connection (that repairs the same Item) rather than removing it and connecting a
 and Bank of America also have to approve an app for their own sign-in; the dashboard shows that
 status per institution.
 
-## What is stored where
+## What is stored where, and how it survives
 
 - **Plaid client_id and secret:** encrypted with AES-256-GCM under a key generated inside the
   Android Keystore, which cannot be taken off the device. Only the ciphertext is written to the
-  app's storage. They are not synced and not in backups, and they are sent to Plaid only.
+  app's storage. They are sent to Plaid only, and are never in a backup file. With sync on, they
+  are also in the sync copy, encrypted with your passphrase, so that a reinstall can get them
+  back.
 - **Each bank's access token:** with the rest of your data (see below), and in the encrypted sync
   copy so another device can fetch too. Without the secret it opens nothing.
 - **Transactions, rules, settings:** the app's own storage on the phone (IndexedDB), as on the
   website. Android's cloud backup and device-to-device transfer are switched off for this app, so
   nothing reaches Google; use the app's sync or **Download backup** to move data.
 
+### Updates never lose data
+
+An update keeps everything, the Plaid keys included, and this is guarded at each step:
+
+- **Only an update that can install over the app is published.** The build workflow refuses to
+  publish a build that is not signed with the app's key (its certificate fingerprint is checked)
+  or not numbered above the last one. Version numbers are minutes since 2026, so they only grow.
+- **The app checks the download too.** It refuses an update signed with another key and tells you
+  not to uninstall to get it.
+- **Where the data lives is pinned.** The app's storage belongs to its package id and its internal
+  address (`https://localhost`); both are fixed in `capacitor.config.json`, and a test fails if
+  either changes.
+- **The keys are never thrown away.** If the Keystore cannot be read for a moment (it can be slow
+  right after a restart), the app says so and keeps them; it never treats that as "no keys".
+- **One more copy first.** With sync on, the app syncs before handing an update to the installer.
+
+What updates cannot protect against is removing the app. Two things soften that: on Android 10
+and later, uninstalling asks whether to **keep the app's data**, which keeps your transactions;
+and with **sync** on, everything, Plaid keys included, comes back after a reinstall when you enter
+the same token and passphrase. (The Keystore itself is always wiped with the app, which is why the
+keys travel in the encrypted sync copy.) Turn sync on.
+
 ## Known gaps
 
 - **Share → FinanceTracker** (handing over a CSV from Chrome's downloads) is a feature of the
   installed website and is not wired into this app. Use the file chooser under **Refresh data**.
-- No automatic updates: there is no store behind it.
+- Updates need one tap on Android's install screen (or Obtainium, above).
 - A relay cannot be used from the Android app. It does not need one.
 
 ## Building it yourself

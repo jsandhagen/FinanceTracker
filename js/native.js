@@ -8,6 +8,7 @@
 //   secure     small secrets encrypted with a key held in the Android Keystore.
 //   openLink   Plaid Link through Plaid's Android SDK.
 //   saveFile   Android's "save to" screen, for backups and exports.
+//   update     the app updating itself from its GitHub release.
 //
 // In a browser none of it exists: isNative() is false and nothing here is used.
 
@@ -16,7 +17,12 @@ export const isNative = () => !!cap()?.isNativePlatform?.();
 
 async function native(plugin, method, options = {}) {
   try { return await cap().nativePromise(plugin, method, options); }
-  catch (e) { throw e instanceof Error ? e : new Error(e?.message || e?.errorMessage || String(e)); }
+  catch (e) {
+    if (e instanceof Error) throw e;
+    const err = new Error(e?.message || e?.errorMessage || String(e));
+    err.code = e?.code || null;
+    throw err;
+  }
 }
 
 // POSTs JSON and resolves { status, data }, whatever the status. Rejects only
@@ -55,6 +61,40 @@ export async function openLink(token) {
   }
   return null;
 }
+
+// GETs JSON through Android, as postJson. Resolves the parsed body or rejects.
+export async function getJson(url) {
+  const r = await native('CapacitorHttp', 'request', { method: 'GET', url, headers: { 'Cache-Control': 'no-cache' }, responseType: 'json' });
+  if (r.status < 200 || r.status >= 300) throw new Error(`The server answered ${r.status}.`);
+  let data = r.data;
+  if (typeof data === 'string') data = JSON.parse(data);
+  return data;
+}
+
+// ── Updating the app ──
+// Every build from main is published as the android-latest release with a
+// version.json beside the APK. The app compares its own version code with it.
+export const RELEASE = 'https://github.com/jsandhagen/FinanceTracker/releases/download/android-latest/';
+
+// The newer build described by `remote` (version.json), or null when `current`
+// (the installed app's info) is as new or newer, or the answer is not usable.
+export function newerBuild(remote, current) {
+  const code = Number(remote?.versionCode), have = Number(current?.versionCode);
+  if (!Number.isFinite(code) || !Number.isFinite(have) || code <= have) return null;
+  const apk = String(remote.apk || 'FinanceTracker.apk');
+  if (!/^[\w.-]+\.apk$/.test(apk)) return null;
+  return { versionCode: code, versionName: String(remote.versionName || code), url: RELEASE + apk };
+}
+
+export const update = {
+  info: () => native('AppUpdate', 'info'),
+  async check() {
+    const [remote, current] = await Promise.all([getJson(RELEASE + 'version.json'), update.info()]);
+    return { current, newer: newerBuild(remote, current) };
+  },
+  allowInstalls: () => native('AppUpdate', 'allowInstalls'),
+  install: url => native('AppUpdate', 'install', { url }),
+};
 
 // Resolves true when the file was written, false if the screen was closed.
 export const saveFile = async (name, mime, text) => (await native('SaveFile', 'save', { name, mime, text })).saved === true;

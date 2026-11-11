@@ -37,6 +37,7 @@ jobs:
           node tests/insights.test.mjs
           node tests/income.test.mjs
           node tests/plaid.test.mjs
+          node tests/native.test.mjs
           node --check js/app.js
           node --check server/plaid-worker.js
 

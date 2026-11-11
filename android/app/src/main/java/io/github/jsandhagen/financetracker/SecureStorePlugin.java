@@ -23,6 +23,12 @@ import javax.crypto.spec.GCMParameterSpec;
  * written to the app's preferences is AES-256-GCM ciphertext, so a copy of the
  * app's files does not contain the secret.
  *
+ * Nothing here ever throws a value away. If the Keystore cannot be read (it can
+ * be slow or briefly unavailable right after a reboot), get() reports an error
+ * and leaves the stored value as it is, to be read next time. The key is only
+ * ever created by set(), and only when none exists: making a new one over an
+ * existing key would leave what was stored unreadable for good.
+ *
  * JS: Capacitor.nativePromise('SecureStore', 'set' | 'get' | 'remove', { key, value? })
  */
 @CapacitorPlugin(name = "SecureStore")
@@ -37,11 +43,13 @@ public class SecureStorePlugin extends Plugin {
         return getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    private Key key() throws Exception {
+    /** The Keystore key; with create false, an error when there is none. */
+    private Key key(boolean create) throws Exception {
         KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
         keyStore.load(null);
         Key existing = keyStore.getKey(KEY_ALIAS, null);
         if (existing != null) return existing;
+        if (!create || keyStore.containsAlias(KEY_ALIAS)) throw new java.security.KeyStoreException("the Keystore key could not be read");
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE);
         generator.init(
             new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
@@ -63,7 +71,7 @@ public class SecureStorePlugin extends Plugin {
         }
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, key()); // the Keystore picks a fresh IV
+            cipher.init(Cipher.ENCRYPT_MODE, key(true)); // the Keystore picks a fresh IV
             cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
             byte[] sealed = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
             String stored = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP) + ":" + Base64.encodeToString(sealed, Base64.NO_WRAP);
@@ -77,7 +85,11 @@ public class SecureStorePlugin extends Plugin {
         }
     }
 
-    /** Resolves { value }, with null when nothing is stored or it can no longer be opened. */
+    /**
+     * Resolves { value }, null when nothing is stored. Rejects with code
+     * UNREADABLE when something is stored but cannot be decrypted right now;
+     * it is kept.
+     */
     @PluginMethod
     public void get(PluginCall call) {
         String name = call.getString("key");
@@ -92,13 +104,12 @@ public class SecureStorePlugin extends Plugin {
             try {
                 String[] parts = stored.split(":", 2);
                 Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-                cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, Base64.decode(parts[0], Base64.NO_WRAP)));
+                cipher.init(Cipher.DECRYPT_MODE, key(false), new GCMParameterSpec(128, Base64.decode(parts[0], Base64.NO_WRAP)));
                 cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
                 value = new String(cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP)), StandardCharsets.UTF_8);
             } catch (Exception e) {
-                // The Keystore key is gone (the app's data was restored onto
-                // another install, say). What is stored can never be read again.
-                prefs().edit().remove(name).apply();
+                call.reject("Your saved Plaid keys could not be read just now. They are still saved.", "UNREADABLE", e);
+                return;
             }
         }
         ret.put("value", value == null ? JSObject.NULL : value);
