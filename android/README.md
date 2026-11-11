@@ -19,7 +19,7 @@ What is different from the website:
 | Calls to Plaid | refused by the browser, so a relay is needed | made by Android (`CapacitorHttp`), direct |
 | Plaid Link (bank sign-in) | Plaid's web script and a redirect address | Plaid's Android SDK and the app's package name |
 | Plaid client_id and secret | IndexedDB | encrypted with a key in the Android Keystore |
-| Updates | by itself, on every deploy | install a newer APK over the old one |
+| Updates | by itself, on every deploy | the app offers each new build; **Update**, then Android's **Install** |
 | Saving a backup or export | a download | Android's "save to" screen |
 
 Everything else is one codebase: `index.html`, `css/`, `js/`. The only file that knows about the
@@ -76,7 +76,24 @@ Open the address above in Chrome on the phone, or copy the APK over, and tap it.
 to allow installs from that app (Chrome, or your file manager): allow it, then **Install**. Play
 Protect may offer to scan an app it has not seen before; that is fine.
 
-To update, install the newer APK the same way. Your data stays.
+After that the app updates itself, with your go-ahead:
+
+- When it opens (and every few hours while in use) it looks at the `android-latest` release. A
+  newer build shows **A new version of the app is ready · Update**; it is also under
+  **Settings → App version**, where **Check for updates** looks straight away.
+- **Update** downloads it and Android's own installer asks you to confirm. The very first time,
+  Android first asks you to let FinanceTracker install apps ("Allow from this source"); come back
+  and tap **Update** again.
+- Android installs it only if it is signed with the same key as the app you have, so a download
+  that was tampered with cannot replace it. Your data and Plaid keys stay.
+
+Android does not let a sideloaded app replace itself without that one tap. For updates with no
+tap at all, install the app through [Obtainium](https://github.com/ImranR98/Obtainium) instead,
+pointed at this repository's releases: on Android 12 and later it updates apps it installed in
+the background.
+
+Each build from `main` is published with a `version.json` beside the APK; that is what the app
+reads. A build from before the update button existed has to be replaced by hand once.
 
 ### 4. Plaid
 
@@ -123,7 +140,7 @@ status per institution.
 
 - **Share → FinanceTracker** (handing over a CSV from Chrome's downloads) is a feature of the
   installed website and is not wired into this app. Use the file chooser under **Refresh data**.
-- No automatic updates: there is no store behind it.
+- Updates need one tap on Android's install screen (or Obtainium, above).
 - A relay cannot be used from the Android app. It does not need one.
 
 ## Building it yourself

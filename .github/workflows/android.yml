@@ -122,11 +122,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOTES="Build $APP_VERSION_NAME (version code $APP_VERSION_CODE). Install steps: android/README.md."
+          # What the app reads to learn a newer build exists (js/native.js).
+          printf '{"versionCode":%s,"versionName":"%s","apk":"FinanceTracker.apk"}\n' "$APP_VERSION_CODE" "$APP_VERSION_NAME" > "$RUNNER_TEMP/version.json"
           if gh release view android-latest >/dev/null 2>&1; then
+            # The APK first: an app that sees the new version.json must find its APK.
             gh release upload android-latest "$RUNNER_TEMP/FinanceTracker.apk" --clobber
+            gh release upload android-latest "$RUNNER_TEMP/version.json" --clobber
             gh release edit android-latest --notes "$NOTES" --target "$GITHUB_SHA"
           else
-            gh release create android-latest "$RUNNER_TEMP/FinanceTracker.apk" --title "FinanceTracker for Android" --notes "$NOTES" --target "$GITHUB_SHA" --prerelease
+            gh release create android-latest "$RUNNER_TEMP/FinanceTracker.apk" "$RUNNER_TEMP/version.json" --title "FinanceTracker for Android" --notes "$NOTES" --target "$GITHUB_SHA" --prerelease
           fi
 
       - name: Summary

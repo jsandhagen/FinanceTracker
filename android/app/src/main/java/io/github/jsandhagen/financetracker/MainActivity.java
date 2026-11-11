@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlaidLinkPlugin.class);
         registerPlugin(SecureStorePlugin.class);
         registerPlugin(SaveFilePlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
 
         // The web app keeps its own history (views, open sheets). Back steps

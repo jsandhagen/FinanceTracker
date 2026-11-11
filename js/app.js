@@ -2224,9 +2224,10 @@ function renderSettings() {
   $('data-summary').textContent = state.transactions.length
     ? `${state.transactions.length.toLocaleString()} transactions across ${accts} account${accts === 1 ? '' : 's'}, stored in this browser.`
     : 'Nothing stored yet.';
-  $('app-version').textContent = BUILD.startsWith('__')
+  $('app-version').innerHTML = esc(BUILD.startsWith('__')
     ? 'Development copy (not deployed)'
-    : `Version ${BUILD.split('-')[0]}, deployed ${BUILD.split('-')[1].replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/, '$1-$2-$3 $4:$5 UTC')}`;
+    : `Version ${BUILD.split('-')[0]}, ${native.isNative() ? 'built' : 'deployed'} ${BUILD.split('-')[1].replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)$/, '$1-$2-$3 $4:$5 UTC')}`)
+    + (appNewer ? ` · <b>a newer build is ready</b> (${esc(appNewer.versionName.split('-')[0])}) <button class="btn small primary" data-app-update>Update</button>` : '');
   renderSyncStatus();
 }
 
@@ -2614,8 +2615,55 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') checkForUpdate();
 });
 
+// ── Updating the Android app ─────────────────────────────────────────────────
+// The app looks at its GitHub release when it opens and every few hours. A
+// newer build is offered, never forced: Update downloads it and Android's own
+// installer asks to confirm. It installs only over an app signed with the same
+// key, and keeps the data.
+const APP_CHECK_MS = 6 * 60 * 60 * 1000;
+let appNewer = null, appChecked = 0;
+async function checkAppUpdate({ quiet = true } = {}) {
+  if (!native.isNative()) return;
+  appChecked = Date.now();
+  let res;
+  try { res = await native.update.check(); }
+  catch (e) { if (!quiet) toast(`Couldn't check for updates: ${e.message}`, true); return; }
+  appNewer = res.newer;
+  if (settingsOverlay.classList.contains('open')) renderSettings();
+  if (appNewer) offerAppUpdate();
+  else if (!quiet) toast("You're on the latest version.");
+}
+function offerAppUpdate() {
+  const el = $('toast');
+  el.innerHTML = `A new version of the app is ready. <button class="link-btn" data-app-update>Update</button>`;
+  el.classList.remove('err');
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 15000);
+}
+async function installAppUpdate() {
+  if (!appNewer) return;
+  try {
+    const info = await native.update.info();
+    if (!info.canInstall) {
+      // Asked once: Android lists FinanceTracker under "Install unknown apps".
+      if (!confirm('Android needs your go-ahead, once, for FinanceTracker to install its own updates. Open that setting now? Turn on "Allow from this source", come back and tap Update again.')) return;
+      await native.update.allowInstalls();
+      return;
+    }
+    toast('Downloading the update…');
+    await native.update.install(appNewer.url);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+document.addEventListener('click', ev => { if (ev.target.closest('[data-app-update]')) installAppUpdate(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - appChecked > APP_CHECK_MS) checkAppUpdate();
+});
+
 $('check-update').addEventListener('click', async () => {
-  if (native.isNative()) { toast('The Android app updates when you install a newer APK.'); return; }
+  if (native.isNative()) { checkAppUpdate({ quiet: false }); return; }
   if (!swReg) { toast('Updates only apply to the deployed site.'); return; }
   try { await swReg.update(); }
   catch { toast("Couldn't reach the server. Check your connection.", true); return; }
@@ -2653,7 +2701,7 @@ async function boot() {
   // file lets every file app offer itself; importFiles sorts out the rest.
   if (isAndroid) for (const id of ['file-input', 'add-input']) $(id).removeAttribute('accept');
   state = await store.loadAll();
-  if (native.isNative()) appId = await native.packageName().catch(() => '');
+  if (native.isNative()) { appId = await native.packageName().catch(() => ''); checkAppUpdate(); }
   const healed = settle(state.transactions);
   if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
   await watch.load().catch(() => null);
