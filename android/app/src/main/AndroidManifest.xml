@@ -12,8 +12,12 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- `density` is left out of configChanges on purpose: the WebView does not
+             redraw at a new scale by itself, so moving to DeX (or DeX changing its
+             scale) must restart the screen. Kept in, the app stays at the phone's
+             scale on a monitor: zoomed in and stuck on the phone layout. -->
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -46,11 +50,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
-
-        <!-- Samsung DeX: keep the app running, with what is on screen, when it
-             moves between the phone and DeX or DeX changes its scale. -->
-        <meta-data android:name="com.samsung.android.keepalive.density" android:value="true" />
-        <meta-data android:name="com.samsung.android.multidisplay.keep_process_alive" android:value="true" />
     </application>
 
     <!-- Runs with a mouse and keyboard alone (DeX, a Chromebook): no touch screen needed. -->
