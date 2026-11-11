@@ -18,7 +18,17 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
             android:exported="true">
+
+            <!-- Samsung DeX and other desktop modes open the app in a window this size
+                 (the dashboard's desktop layout) rather than phone-shaped; it can be
+                 resized down to a phone's width. -->
+            <layout
+                android:defaultWidth="1280dp"
+                android:defaultHeight="800dp"
+                android:minWidth="360dp"
+                android:minHeight="480dp" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,7 +46,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Samsung DeX: keep the app running, with what is on screen, when it
+             moves between the phone and DeX or DeX changes its scale. -->
+        <meta-data android:name="com.samsung.android.keepalive.density" android:value="true" />
+        <meta-data android:name="com.samsung.android.multidisplay.keep_process_alive" android:value="true" />
     </application>
+
+    <!-- Runs with a mouse and keyboard alone (DeX, a Chromebook): no touch screen needed. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <!-- Permissions -->
 

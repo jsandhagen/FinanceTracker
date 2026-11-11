@@ -160,6 +160,15 @@ and with **sync** on, everything, Plaid keys included, comes back after a reinst
 the same token and passphrase. (The Keystore itself is always wiped with the app, which is why the
 keys travel in the encrypted sync copy.) Turn sync on.
 
+## Samsung DeX
+
+On a monitor the app opens as a desktop-sized window (1280 × 800) with the full dashboard, and
+keeps running, with what is on screen, when it moves between the phone and DeX. Resize the window
+and the layout follows: from about 860 to 1100 wide the menu folds to icons (`[` opens it), below
+that it is the phone layout. With a mouse, right-click a transaction to recategorize it; with a
+keyboard, `Ctrl K` searches, `1`–`7` switch views and `Ctrl F` finds in the ledger. No touch
+screen is needed.
+
 ## Known gaps
 
 - **Share → FinanceTracker** (handing over a CSV from Chrome's downloads) is a feature of the

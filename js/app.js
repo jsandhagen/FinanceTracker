@@ -1388,6 +1388,15 @@ $('txn-tbody').addEventListener('click', ev => {
   const tr = ev.target.closest('tr[data-row]');
   if (tr) openDrawer(visibleTxns[Number(tr.dataset.row)]);
 });
+// With a mouse (a desktop, DeX), right-clicking a transaction recategorizes it
+// where the pointer is. Taking the click also keeps DeX from reading it as Back.
+$('txn-tbody').addEventListener('contextmenu', ev => {
+  const pill = ev.target.closest('tr[data-row]')?.querySelector('.txn-cat');
+  if (!pill || ev.target.closest('a, input')) return;
+  ev.preventDefault();
+  const at = { getBoundingClientRect: () => ({ top: ev.clientY, bottom: ev.clientY, left: ev.clientX }) };
+  openPicker(at, pill.dataset.merchant, pill.dataset.cat, pill.dataset.amount);
+});
 
 // ── Date range ───────────────────────────────────────────────────────────────
 function presetRange(key) {
@@ -1502,24 +1511,42 @@ cmdOverlay.addEventListener('click', ev => { if (ev.target === cmdOverlay) close
 
 document.addEventListener('keydown', ev => {
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') { ev.preventDefault(); cmdOverlay.classList.contains('open') ? closeCmd() : openCmd(); return; }
+  // In the ledger, find means its own search box.
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'f' && view === 'transactions' && !document.querySelector('.overlay.open')) {
+    ev.preventDefault(); $('txn-search').focus(); $('txn-search').select(); return;
+  }
   const a = document.activeElement;
   if (ev.ctrlKey || ev.metaKey || ev.altKey || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
   if (document.querySelector('.overlay.open') || $('dashboard').hidden) return;
   if (ev.key === '/') { ev.preventDefault(); openCmd(); return; }
+  if (ev.key === '[' && !isPhone()) { hideTip(); setRail(!$('dashboard').classList.contains('rail')); return; }
   const v = NAV_KEYS[Number(ev.key) - 1];
   if (v) setView(v);
 });
 
 // ── Side rail ────────────────────────────────────────────────────────────────
 // Collapses to icons. A convenience kept per browser, so it may be forgotten.
-function setRail(on) {
+// A window between the phone layout and a full desktop (a DeX window, a
+// tablet) starts as the rail to leave the data the room; the toggle still
+// opens it there, for as long as the window stays that size.
+const midWidth = matchMedia('(min-width: 861px) and (max-width: 1100px)');
+let railHere = null;
+function applyRail() {
+  let on = false;
+  try { on = !!localStorage.getItem('ft-rail'); } catch {}
+  if (midWidth.matches) on = railHere ?? true;
   $('dashboard').classList.toggle('rail', on);
+}
+function setRail(on) {
+  if (midWidth.matches) railHere = on;
+  else try { localStorage.setItem('ft-rail', on ? '1' : ''); } catch {}
+  applyRail();
   $('nav-toggle').dataset.railTip = 'Expand';
-  try { localStorage.setItem('ft-rail', on ? '1' : ''); } catch {}
   setTimeout(() => { if (view === 'cashflow' || view === 'spending') renderActive(); }, 220); // drawn to the new width
 }
 $('nav-toggle').addEventListener('click', () => { hideTip(); setRail(!$('dashboard').classList.contains('rail')); });
-try { if (localStorage.getItem('ft-rail')) $('dashboard').classList.add('rail'); } catch {}
+midWidth.addEventListener('change', () => { railHere = null; applyRail(); });
+applyRail();
 
 // ── Demo ─────────────────────────────────────────────────────────────────────
 function startDemo() {
