@@ -74,7 +74,9 @@ assert.deepEqual(series.map(d => [d.date, d.total_bank, d.net]), [['2026-03-01',
 // ── Short keywords must start a word ──
 const kw = d => cat(A.parseFile(BANK + `1234,${d},03/05/26,Debit,5.00,100.00\n`).transactions)[0].category;
 assert.equal(kw('RENT PAYMENT PORTAL'), 'Housing');
-assert.equal(kw('Debit Card Purchase - CURRENT BREWING'), 'Other');
+assert.equal(kw('Debit Card Purchase - CURRENT WIDGETS'), 'Other', "'rent' is not in CURRENT");
+assert.equal(kw('RENT THE RUNWAY'), 'Shopping', 'a shop with rent in its name');
+assert.equal(kw('EQUIPMENT RENTAL CO'), 'Other', "'rent' is a whole word");
 assert.equal(kw('UBER EATS PENDING'), 'Dining');
 assert.equal(kw('UBER TRIP'), 'Transportation');
 assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
@@ -155,6 +157,73 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   assert.equal(bo['Debit Card Purchase - TRADER JOE S #552'], 'Groceries');
   assert.equal(bo['Debit Card Purchase - AMAZON FRESH'], 'Groceries', 'Amazon Fresh is groceries');
   assert.equal(bo['Debit Card Purchase - AMAZON.COM'], 'Shopping', 'the rest of Amazon is not');
+}
+
+// ── Commonly misfiled ──
+{
+  const bankCat = d => cat(A.parseFile(BANK + `1234,${d},03/05/26,Debit,25.00,100.00\n`).transactions)[0];
+  const bankIn = d => cat(A.parseFile(BANK + `1234,${d},03/05/26,Credit,25.00,100.00\n`).transactions)[0];
+  const cardCat = (d, c) => cat(A.parseFile(CARD + `2026-03-05,2026-03-06,4321,${d},${c},25.00,\n`).transactions)[0];
+
+  // PayPal: a purchase through it is spending; only a transfer is a transfer.
+  assert.equal(bankCat('PAYPAL *NETFLIX.COM').category, 'Subscriptions');
+  assert.ok(!bankCat('PAYPAL *EBAY').is_transfer && bankCat('PAYPAL *EBAY').category === 'Shopping');
+  assert.ok(bankCat('PAYPAL INST XFER').is_transfer, 'sending money is still a transfer');
+  // Investments are kept, not spent, and not earned when they come back.
+  for (const d of ['VANGUARD BUY INVESTMENT', 'FIDELITY INVESTMENTS', 'ROBINHOOD FUNDS', 'Coinbase Inc', 'SCHWAB BROKERAGE']) {
+    const r = bankCat(d);
+    assert.ok(r.category === 'Investment Transfer' && r.is_transfer, d);
+  }
+  assert.ok(bankIn('VANGUARD SELL').is_transfer, 'a withdrawal is not income');
+  // Pay-later plans are what was bought.
+  for (const d of ['AFFIRM INC', 'KLARNA* PAYMENT', 'AFTERPAY US']) assert.equal(bankCat(d).category, 'Shopping', d);
+  // Apple: a subscription, a store, or money sent.
+  assert.equal(bankCat('APPLE.COM/BILL 866-712-7753').category, 'Subscriptions');
+  assert.equal(bankCat('APPLE STORE R123').category, 'Shopping');
+  assert.ok(bankCat('APPLE CASH SENT MONEY').is_transfer);
+  assert.ok(bankCat('APPLECARD GSBANK PAYMENT').category === 'Credit Card Payment');
+  // Names that only looked like a category.
+  assert.equal(bankCat('STEAMBOAT CARPET CLEANING').category, 'Other', 'not Steam the game store');
+  assert.equal(bankCat('BILTMORE ESTATE').category, 'Other', 'not Bilt rent');
+  assert.equal(bankCat('AMAZON PRIME*2K4').category, 'Subscriptions', 'Prime is a subscription, the rest of Amazon is not');
+  assert.equal(bankCat('COSTCO GAS #123').category, 'Transportation', 'Costco fuel is fuel');
+  assert.equal(bankCat('COSTCO WHSE #123').category, 'Shopping');
+  // Money in that is not a paycheck.
+  assert.equal(bankIn('Monthly Interest Paid').category, 'Interest Income', 'checking pays interest too');
+  assert.equal(bankIn('IRS TREAS 310 TAX REF').category, 'Income');
+  assert.equal(bankIn('Zelle money received from SAM').category, 'Income');
+  assert.ok(bankCat('Zelle money sent to SAM').is_transfer);
+  // Fees and cash.
+  assert.equal(bankCat('OVERDRAFT FEE').category, 'Fees');
+  assert.equal(bankCat('ATM WITHDRAWAL 123 MAIN ST').category, 'Other');
+  // More card issuers paid from checking.
+  for (const d of ['AMEX EPAYMENT ACH PMT', 'SYNCHRONY BANK PAYMENT', 'CHASE CREDIT CRD AUTOPAY']) assert.ok(bankCat(d).is_transfer, d);
+  // A Virginia bill or two.
+  for (const d of ['XFINITY MOBILE', 'PEPCO BILL PAY', 'FAIRFAX WATER']) assert.equal(bankCat(d).category, 'Utilities & Bills', d);
+
+  // On a card, a brand beats the card's vague category; a specific one stands.
+  assert.equal(cardCat('NETFLIX.COM', 'Entertainment').category, 'Subscriptions');
+  assert.equal(cardCat('CVS/PHARMACY #1234', 'Merchandise').category, 'Health');
+  assert.equal(cardCat('TST* LOCAL TAVERN', 'Other Services').category, 'Dining');
+  assert.equal(cardCat('GEICO *AUTO', 'Other Services').category, 'Insurance');
+  assert.equal(cardCat('XFINITY', 'Internet').category, 'Utilities & Bills');
+  assert.equal(cardCat('WALMART.COM', 'Grocery').category, 'Groceries', 'the card knows a Walmart trip was food');
+  assert.equal(cardCat('SOME SALON', 'Professional Services').category, 'Other', 'no odd category of its own');
+  assert.equal(cardCat('NETFLIX.COM', 'Payment/Credit').is_transfer, true, 'a transfer is never relabelled');
+
+  // Plaid rows get the same names.
+  const viaPlaid = [{ id: 'q1', source: 'plaid', kind: 'credit_card', date: '2026-04-01', description: 'Netflix', account: 'Credit Card ...9', amount: -15.49, balance: null, raw_category: 'ENTERTAINMENT|ENTERTAINMENT_TV_AND_MOVIES' },
+    { id: 'q2', source: 'plaid', kind: 'checking', date: '2026-04-02', description: 'Vanguard', account: 'Checking ...1', amount: -500, balance: null, raw_category: 'TRANSFER_OUT|TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS' }];
+  const pc = cat(viaPlaid);
+  assert.equal(pc.find(x => x.id === 'q1').category, 'Subscriptions');
+  assert.ok(pc.find(x => x.id === 'q2').is_transfer);
+  assert.equal(A.plaidCategory('TRANSFER_OUT|TRANSFER_OUT_INVESTMENT_AND_RETIREMENT_FUNDS'), 'Investment Transfer');
+
+  // None of these may be caught by a name rule meant for something else.
+  const plain = ['CURRENT WIDGETS LLC', 'DELTA DENTAL', 'ALAMO DRAFTHOUSE', 'GRASSHOPPER CAFE', 'METROPOLITAN OPERA',
+    'BILTMORE ESTATE', 'EQUIPMENT RENTAL CO', 'JINGLES BAR', 'SEASHELL SHOP'];
+  const seen = plain.map(d => [d, bankCat(d).category]);
+  assert.ok(!seen.some(([d, c]) => ['Housing', 'Travel', 'Groceries', 'Subscriptions'].includes(c)), JSON.stringify(seen));
 }
 
 console.log('analyzer tests passed');

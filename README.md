@@ -60,6 +60,15 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   or bank called them. A Capital One travel credit comes off Travel. Grocery stores (Trader Joe's,
   Whole Foods, Aldi, Giant, Safeway, Wegmans, Instacart…) are Groceries the same way, except their
   gas pumps and pharmacies; Target, Walmart and Costco stay Shopping.
+- **Brands are filed by name on cards too.** Streaming services, restaurant chains, gas brands,
+  utilities, insurers, pharmacies and gyms land in the same category whether they were paid by card
+  or from checking, and whether the data came from a CSV or Plaid. A card's own specific category
+  (a Walmart run it calls Grocery) is kept.
+- **Money that is not spending or income is kept out.** Contributions to Vanguard, Fidelity,
+  Schwab, Robinhood and the like are Investment Transfers. A PayPal purchase counts as spending,
+  and only a PayPal transfer to a person is a transfer. Affirm, Klarna and Afterpay payments
+  count as Shopping, because they are the only record of what was bought. ATM cash counts as
+  spending (Other).
 - **Refunds are not income.** Money back on a card comes off spending in its category. Payments
   to the card and moves between your own accounts count as neither income nor spending.
 - **Rules stick.** Tap a category in the transactions table to recategorize a merchant (or one
