@@ -485,7 +485,7 @@ function upcomingRow(x) {
   return `<div class="up-row link" data-stream="${x.idx}">
     <span class="up-date">${shortDate(x.next)}</span>
     <span class="up-name">${esc(x.s.merchant)}<small>${x.s.frequency} · ${inDays <= 0 ? 'due now' : `in ${inDays}d`}</small></span>
-    <span class="amt ${inc ? 'pos' : ''}">${inc ? '+' : '−'}$${fmt(x.s.avg_amount)}</span>
+    <span class="amt ${inc ? 'pos' : ''}">${inc ? '+' : '−'}$${fmt(x.amount)}</span>
   </div>`;
 }
 
@@ -1166,7 +1166,7 @@ function renderRecurring() {
   setKpis('rec-kpis', [
     kpiTile({ label: 'Committed per month', value: money0(out.reduce((s, x) => s + x.monthly, 0)), sub: `${out.length} active charges` }),
     kpiTile({ label: 'Recurring income', value: money0(inc.reduce((s, x) => s + x.monthly, 0)), tone: 'pos', sub: `${inc.length} source${inc.length === 1 ? '' : 's'} per month` }),
-    kpiTile({ label: 'Due in 30 days', value: money0(due.reduce((s, x) => s + x.s.avg_amount, 0)), sub: `${due.length} charge${due.length === 1 ? '' : 's'} expected` }),
+    kpiTile({ label: 'Due in 30 days', value: money0(due.reduce((s, x) => s + x.amount, 0)), sub: `${due.length} charge${due.length === 1 ? '' : 's'} expected` }),
     kpiTile({ label: 'Streams', value: `${live.length}<small> / ${SCHED.length}</small>`, sub: 'active / detected' }),
   ]);
 
@@ -1177,7 +1177,7 @@ function renderRecurring() {
         <td><span class="dir ${isInc ? 'in' : 'out'}" title="${isInc ? 'Income' : 'Expense'}">${isInc ? '↓' : '↑'}</span>${esc(x.s.merchant)}</td>
         <td class="col-hide-sm dim">${esc(x.s.category)}</td>
         <td><span class="tag">${x.s.frequency}</span></td>
-        <td class="num ${isInc ? 'pos' : ''}">${isInc ? '+' : ''}${money(x.s.avg_amount)}</td>
+        <td class="num ${isInc ? 'pos' : ''}">${isInc ? '+' : ''}${money(x.amount)}</td>
         <td class="num col-hide-sm dim">${money(x.monthly)}</td>
         <td>${x.active ? shortDate(x.next) : `<span class="tag" title="Last seen ${shortDate(x.last)}">LAPSED</span>`}</td></tr>`;
     }).join('')}</tbody>` : `<tbody><tr><td class="empty">No recurring streams detected yet. They appear once a merchant shows up at least three times at regular intervals.</td></tr></tbody>`;

@@ -46,6 +46,23 @@ close(sch.monthly, 1725 * 30.44 / sch.interval, 'rent per month');
 assert.equal(I.schedule(rent, asOf + 200 * I.DAY).active, false, 'a stream that stopped is lapsed');
 assert.equal(I.parseFmtDate(A.fmtDate('2026-03-09')), A.localTs('2026-03-09'));
 
+// A paycheck's expected amount is what it has been lately: a $10,000 bonus from
+// the same employer in March does not lift the biweekly $3,400, and a raise
+// is picked up once it has been paid a few times.
+const pay = [];
+for (let d = A.localTs('2026-01-02'); d <= A.localTs('2026-10-30'); d += 14 * I.DAY) {
+  pay.push({ date: A.fmtDate(new Date(d).toLocaleDateString('sv')), amount: d < A.localTs('2026-02-01') ? 3200 : 3400 });
+}
+pay.splice(6, 0, { date: pay[5].date, amount: 10000 });
+const payStream = { merchant: 'ACME PAYROLL', direction: 'income',
+  avg_amount: A.round2(pay.reduce((s, t) => s + t.amount, 0) / pay.length), transactions: pay };
+assert.ok(payStream.avg_amount > 3650, 'the all-time mean is what the bonus skews');
+const paySch = I.schedule(payStream, A.localTs('2026-11-05'));
+assert.equal(paySch.amount, 3400, 'expected paycheck ignores the bonus');
+close(paySch.monthly, 3400 * 30.44 / 14, 'paycheck per month');
+const raised = { ...payStream, transactions: [...pay.slice(0, -3), ...pay.slice(-3).map(t => ({ ...t, amount: 3600 }))] };
+assert.equal(I.schedule(raised, A.localTs('2026-11-05')).amount, 3600, 'a raise shows up by its third paycheck');
+
 // Budgets: budgeted categories first, spent matches the category total for the month.
 const rows = I.budgetRows(ops, '2026-05', { Groceries: 600 });
 assert.equal(rows[0].name, 'Groceries');

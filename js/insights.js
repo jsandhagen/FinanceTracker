@@ -127,9 +127,13 @@ export function schedule(stream, asOf) {
   const amounts = stream.transactions.map(t => Math.abs(t.amount));
   const lastAmt = amounts[amounts.length - 1];
   const typical = median(amounts.slice(0, -1));
+  // What the next one should be: the middle of the last five, so a one-off from
+  // the same payer (a bonus) does not lift it and a raise shows by its third
+  // payment. stream.avg_amount is the all-time mean, kept for Python parity.
+  const amount = round2(median(amounts.slice(-5)));
   return {
-    interval, last, next, active,
-    monthly: round2(stream.avg_amount * 30.44 / interval),
+    interval, last, next, active, amount,
+    monthly: round2(amount * 30.44 / interval),
     lastAmt, typical,
     priceChange: typical > 0 && Math.abs(lastAmt - typical) / typical > 0.05 && amounts.length >= 4
       && stream.direction === 'expense' && interval >= 25 ? round2(lastAmt - typical) : 0,
