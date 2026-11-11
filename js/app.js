@@ -255,6 +255,15 @@ document.addEventListener('click', ev => {
   goTxns({ cat: el.dataset.txnCat || 'all', search: el.dataset.txnSearch || '' });
 });
 
+// Pay is a salary: the paycheck stream is expected at its last regular deposit,
+// with the bonus from the salary settings left out.
+function schedulePaycheck() {
+  const pay = N.detectPaycheck(SCHED), x = pay && SCHED.find(x => x.s.merchant === pay.merchant);
+  if (!x) return;
+  const cfg = incSaved();
+  Object.assign(x, I.schedule(x.s, DATA_LAST, { bonusMonth: Number(cfg.bonus) > 0 ? cfg.bonusMonth : null }));
+}
+
 // Re-derives everything from storage. keepRange holds the date filter where it was
 // (after a recategorize); otherwise the period goes back to its preset.
 function rebuild(keepRange) {
@@ -269,6 +278,7 @@ function rebuild(keepRange) {
   DATA_MAX = dayEnd(DATA_LAST);
   for (const id of ['date-start', 'date-end']) { $(id).min = isoLocal(DATA_MIN); $(id).max = isoLocal(DATA_MAX); }
   SCHED = STREAMS.map((s, idx) => ({ s, idx, ...I.schedule(s, DATA_LAST) }));
+  schedulePaycheck();
 
   const allOps = ALL_TXN.filter(t => !t.is_transfer);
   CAT_SLOT = {};
@@ -1141,6 +1151,7 @@ async function saveIncome(cfg) {
   incDraft = null;
   state.settings.income = cfg;
   await commit();
+  schedulePaycheck();
   renderIncome(CTX);
 }
 const incomeView = document.querySelector('.view[data-view="salary"]');

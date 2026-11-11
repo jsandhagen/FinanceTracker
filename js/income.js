@@ -54,19 +54,19 @@ export function payDates(freq, year, anchor = null) {
 
 // The paycheck among the recurring streams: the regular income that brings in
 // the most per month. `sched` is the app's list of { s: stream, active,
-// interval, monthly }. Returns null when there is none.
+// interval, monthly, amount }. Returns null when there is none.
 export function detectPaycheck(sched) {
   const pay = sched
     .filter(x => x.s.direction === 'income' && x.s.category === 'Income' && x.interval <= 35)
     .sort((a, b) => b.active - a.active || b.monthly - a.monthly)[0];
   if (!pay) return null;
   const txns = pay.s.transactions;
-  const last = parseFmtDate(txns[txns.length - 1].date);
+  const last = pay.last ?? parseFmtDate(txns[txns.length - 1].date);
   const d = new Date(last);
   const i = pay.interval;
   return {
     merchant: pay.s.merchant,
-    amount: Math.round(median(txns.slice(-3).map(t => Math.abs(t.amount))) * 100) / 100,
+    amount: pay.amount ?? Math.round(median(txns.slice(-3).map(t => Math.abs(t.amount))) * 100) / 100,
     freq: i <= 9 ? 'weekly' : i <= 14 ? 'biweekly' : i <= 18 ? 'semimonthly' : 'monthly',
     lastIso: iso(d.getFullYear(), d.getMonth() + 1, d.getDate()),
     active: pay.active,

@@ -63,6 +63,19 @@ close(paySch.monthly, 3400 * 30.44 / 14, 'paycheck per month');
 const raised = { ...payStream, transactions: [...pay.slice(0, -3), ...pay.slice(-3).map(t => ({ ...t, amount: 3600 }))] };
 assert.equal(I.schedule(raised, A.localTs('2026-11-05')).amount, 3600, 'a raise shows up by its third paycheck');
 
+// As the salaried paycheck, with the bonus month known: the bonus is dropped
+// from its amount and cadence, and a raise shows from the first new paycheck.
+const asPay = I.schedule(payStream, A.localTs('2026-11-05'), { bonusMonth: 3 });
+assert.equal(asPay.amount, 3400);
+assert.equal(asPay.interval, 14);
+assert.ok(I.withoutBonus(pay, 3).every(t => t.amount < 10000), 'bonus left out');
+assert.equal(I.withoutBonus(pay, 3).length, pay.length - 1, 'the March paychecks stay');
+const folded = pay.filter(t => t.amount !== 10000).map((t, i) => (i === 5 ? { ...t, amount: 13400 } : t));
+assert.equal(I.withoutBonus(folded, 3).length, folded.length - 1, 'a paycheck with the bonus folded in is left out');
+const oneRaise = { ...payStream, transactions: [...pay.slice(0, -1), { ...pay.at(-1), amount: 3600 }] };
+assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05'), { bonusMonth: 3 }).amount, 3600, 'salary raise shows at once');
+assert.equal(I.schedule(oneRaise, A.localTs('2026-11-05')).amount, 3400, 'other streams wait for a new amount to repeat');
+
 // Budgets: budgeted categories first, spent matches the category total for the month.
 const rows = I.budgetRows(ops, '2026-05', { Groceries: 600 });
 assert.equal(rows[0].name, 'Groceries');
