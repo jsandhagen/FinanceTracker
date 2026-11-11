@@ -8,6 +8,7 @@ import * as T from './tax.js';
 import * as N from './income.js';
 import * as P from './plaid.js';
 import * as native from './native.js';
+import * as fx from './fx.js';
 import { demoFiles } from './demo.js';
 import { BUILD } from './version.js';
 
@@ -121,6 +122,18 @@ const crosshair = {
   },
 };
 
+// Solid lines carry a soft glow of their own colour, like a trace on a scope.
+// Dashed lines are references and stay flat.
+const glow = {
+  id: 'glow',
+  beforeDatasetDraw(c, args) {
+    const ds = c.data.datasets[args.index], g = c.ctx;
+    g.save();
+    if (args.meta.type === 'line' && !ds.borderDash && typeof ds.borderColor === 'string') { g.shadowColor = ds.borderColor; g.shadowBlur = 12; }
+  },
+  afterDatasetDraw(c) { c.ctx.restore(); },
+};
+
 function initCharts() {
   if (chartsReady) return;
   chartsReady = true;
@@ -130,7 +143,8 @@ function initCharts() {
   d.font.family = MONO;
   d.font.size = 10;
   d.maintainAspectRatio = false;
-  d.animation.duration = 250;
+  d.animation.duration = 420;
+  d.animation.easing = 'easeOutQuart';
   d.plugins.legend.labels.boxWidth = 10;
   d.plugins.legend.labels.boxHeight = 2;
   d.plugins.legend.labels.padding = 14;
@@ -142,7 +156,7 @@ function initCharts() {
     titleColor: C.ink2, bodyColor: C.ink, boxWidth: 8, boxHeight: 8, boxPadding: 4,
     titleFont: { family: MONO, size: 10, weight: '500' }, bodyFont: { family: MONO, size: 11 }, footerFont: { family: MONO, size: 11 },
   });
-  Chart.register(crosshair);
+  Chart.register(crosshair, glow);
 }
 
 function chart(id, cfg) {
@@ -207,6 +221,9 @@ function showView() {
   if (has) rebuild(false);
 }
 
+const moveNav = fx.navMarker($('nav-list'));
+fx.spotlight();
+
 function setView(v, { push = true } = {}) {
   if (!VIEWS[v]) return;
   view = v;
@@ -220,6 +237,7 @@ function setView(v, { push = true } = {}) {
     b.classList.toggle('active', b.dataset.view === v || (b.dataset.view === top && !b.closest('.nav')));
     b.classList.toggle('open', !sub && b.dataset.view === top && top !== v);
   });
+  moveNav();
   $('subnav').hidden = !SUBS[top];
   $('subnav-seg').innerHTML = (SUBS[top] || []).map(([k, label]) => `<button data-goto="${k}"${k === v ? ' class="active"' : ''}>${esc(label)}</button>`).join('');
   $('view-title').textContent = PARENT[v] ? `${VIEWS[top]} / ${VIEWS[v]}` : VIEWS[v];
@@ -350,7 +368,8 @@ function deltaHtml(delta) {
 }
 function setKpis(id, tiles) {
   $(id).style.setProperty('--n', tiles.length);
-  $(id).innerHTML = tiles.join('');
+  $(id).innerHTML = tiles.join('') + '<i class="beam" aria-hidden="true"></i>';
+  fx.countUp($(id), id);
 }
 function relDelta(now, was, upIsGood) {
   if (!was) return null;
@@ -410,6 +429,7 @@ function renderOverview(c) {
     <span class="pace-note">${p.hasPrev
       ? `<b class="${diff <= 0 ? 'pos' : 'neg'}">${money0(Math.abs(diff))} ${diff <= 0 ? 'less' : 'more'}</b> than ${monthName(p.pm)} at day ${p.day}`
       : `through day ${p.day} of ${monthName(p.ym)}`}</span>`;
+  fx.countUp($('pace-head'), 'pace');
   const n = Math.max(p.cur.length, p.prev.length, 28);
   chart('pace-chart', {
     type: 'line',
