@@ -62,6 +62,9 @@ export const TRAVEL_KEYWORDS = [
   'frontier air', 'alaska air', 'allegiant', 'sun country', 'breeze air', 'air canada',
   'british airways', 'lufthansa', 'air france', 'klm', 'airline', 'airways', 'amtrak',
   'global entry', 'tsa precheck',
+  // park entry and passes: paid on trips
+  /(^|[^a-z])or parks\b/, /\bstate parks?\b/, 'national park', 'albertaparks', 'alberta parks',
+  'parks canada', 'parkscanada', 'recreation.gov', 'recreation gov', 'nps.gov',
   // Capital One Travel: flights (COTFLT), hotels (COTHTL), cars and the rest
   // (COT*FLT, COT*HTL, COT*LCH on a card export; COTFLT where the * is stripped)
   'capital one travel', 'capitalone travel', 'cap one travel', 'c1 travel', 'capital 1 lounge',
@@ -89,6 +92,8 @@ export const GROCERY_KEYWORDS = [
   'lotte plaza', 'patel brothers', '99 ranch', 'grocery outlet', 'save a lot', 'food 4 less',
   'smart & final', 'winn-dixie', 'winn dixie', 'ingles market', 'bi-lo', 'shoppers food', 'amazon fresh',
   'instacart', 'shipt', 'grocery', 'supermarket',
+  // drink bought to take home
+  'abc store', 'liquor', 'total wine', 'bevmo', 'wine & spirits', 'wine and spirits',
 ];
 const NOT_GROCERY = /fuel|gasoline|\bgas\b|pharmacy|\brx\b/i;
 export const isGrocery = text => {

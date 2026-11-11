@@ -254,6 +254,13 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   // The restaurant in a hotel is a meal; the hotel is a trip.
   assert.equal(card('TST*SCP REDMOND HOTEL', 'Dining'), 'Dining');
   assert.equal(card('COURTYARD BY MARRIOTT', 'Lodging'), 'Travel');
+  // Park fees are trips; a liquor store is groceries; a barber is left alone.
+  assert.equal(card('OR PARKS SMITH ROCK', 'Other Services'), 'Travel');
+  assert.equal(card('SHOP.ALBERTAPARKS.CA', 'Other Services'), 'Travel');
+  assert.equal(card('COLOR PARKSIDE SALON', 'Other Services'), 'Other', 'not Oregon parks');
+  assert.equal(card('WASHINGTON PARK MOBILE', 'Gas/Automotive'), 'Transportation', 'parking in a park is parking');
+  assert.equal(card('VA ABC STORE 219', 'Other Services'), 'Groceries');
+  assert.equal(card('SQ *LEGEND BARBER', 'Other Services'), 'Other');
   // A parking charge at a museum the card calls Gas/Automotive stays parking.
   assert.equal(card('SI NAT AIR & SPACE MUSEU', 'Gas/Automotive'), 'Transportation');
 }
