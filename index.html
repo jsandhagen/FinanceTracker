@@ -333,20 +333,31 @@
             <div class="panel-head"><span class="panel-title">What if: a raise</span><span class="panel-meta" id="inc-raise-meta"></span></div>
             <div class="panel-body">
               <div class="inc-raise-row">
-                <span class="filter-label">Raise</span>
-                <div class="input-affix"><input id="inc-raise-pct" data-raise="pct" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise as a percentage" /><span class="suffix">%</span></div>
-                <span class="dim">or</span>
-                <div class="input-affix"><span>$</span><input id="inc-raise-usd" data-raise="usd" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise in dollars a year" /></div>
-                <span class="dim">or new salary</span>
-                <div class="input-affix"><span>$</span><input id="inc-raise-salary" data-raise="salary" type="number" inputmode="decimal" min="0" step="any" aria-label="New salary" /></div>
-                <span class="spacer"></span>
-                <span class="filter-label">Save</span>
-                <div class="input-affix"><input id="inc-save-share" type="number" inputmode="decimal" min="0" max="100" step="5" value="100" aria-label="Share of the extra take-home you would save" /><span class="suffix">%</span></div>
-                <span class="dim">of it</span>
-                <button type="button" class="btn small" id="inc-raise-clear">Clear</button>
+                <div class="seg" id="inc-raise-mode" role="group" aria-label="How the raise is given">
+                  <button type="button" data-mode="pct" title="A percentage of your salary">%</button>
+                  <button type="button" data-mode="usd" title="Dollars a year">$</button>
+                  <button type="button" data-mode="salary">New salary</button>
+                </div>
+                <div class="input-affix"><span id="inc-raise-pre">$</span><input id="inc-raise" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise" /><span class="suffix" id="inc-raise-suf">%</span></div>
+                <div class="raise-picks" id="inc-raise-picks">
+                  <button type="button" class="btn small" data-pick="3">3%</button>
+                  <button type="button" class="btn small" data-pick="5">5%</button>
+                  <button type="button" class="btn small" data-pick="10">10%</button>
+                </div>
+                <button type="button" class="link-btn" id="inc-raise-clear" hidden>Clear</button>
               </div>
+              <div class="kpi-row" id="inc-raise-figs" hidden></div>
               <div id="inc-raise-bar"></div>
-              <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
+              <div class="raise-save" id="inc-raise-save" hidden>
+                <label for="inc-save-share">Of the extra take-home, save</label>
+                <div class="input-affix"><input id="inc-save-share" type="number" inputmode="decimal" min="0" max="100" step="5" value="100" /><span class="suffix">%</span></div>
+                <span class="dim">and spend the rest.</span>
+                <span class="raise-save-out" id="inc-save-out"></span>
+              </div>
+              <details class="raise-more" id="inc-raise-more" hidden>
+                <summary>Full breakdown, now and with the raise</summary>
+                <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
+              </details>
               <div class="note" id="inc-raise-note"></div>
             </div>
           </div>

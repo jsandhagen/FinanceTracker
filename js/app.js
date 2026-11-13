@@ -971,7 +971,6 @@ $('src-table').addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.
 // far your withholding sits from the textbook figure.
 const INC = { federal: '#d95926', fica: '#c98500', virginia: '#9085e9', pretax: '#3987e5', net: '#199e70' };
 const INC_FIELDS = { salary: 'inc-salary', freq: 'inc-freq', bonus: 'inc-bonus', bonusUnit: 'inc-bonus-unit', bonusMonth: 'inc-bonus-month', filing: 'inc-filing', netPay: 'inc-net' };
-const RAISE_IDS = { pct: 'inc-raise-pct', usd: 'inc-raise-usd', salary: 'inc-raise-salary' };
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 $('inc-bonus-month').innerHTML = MONTH_NAMES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
 
@@ -1048,9 +1047,10 @@ function renderIncome(c) {
     setKpis('inc-kpis', [kpiTile({ label: 'Gross per year', value: '—', sub: 'enter your salary below' }), kpiTile({ label: 'Take-home per paycheck', value: pay ? money(pay.amount) : '—', sub: pay ? `from ${esc(pay.merchant)}` : '' }),
       kpiTile({ label: 'Take-home per year', value: '—' }), kpiTile({ label: 'Kept of gross', value: '—' })]);
     for (const id of ['inc-split', 'inc-va', 'inc-year-sum', 'inc-raise-bar']) $(id).innerHTML = id === 'inc-raise-bar' ? '' : empty('Enter your salary to see this.');
-    $('inc-raise-table').innerHTML = ''; $('inc-raise-note').textContent = ''; $('inc-year-legend').innerHTML = '';
+    $('inc-raise-table').innerHTML = ''; $('inc-raise-note').textContent = 'Enter your salary to try a raise.'; $('inc-year-legend').innerHTML = '';
+    for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear']) $(id).hidden = true;
     for (const id of ['inc-split-meta', 'inc-raise-meta', 'inc-year-meta', 'inc-va-meta']) $(id).textContent = '';
-    for (const id of Object.values(RAISE_IDS)) fill(id, '');
+    fill('inc-raise', '');
     charts['inc-year-chart']?.destroy(); delete charts['inc-year-chart'];
     return;
   }
@@ -1103,18 +1103,38 @@ function renderIncome(c) {
     <p class="inc-note">${cal}</p>`;
 
   // ── What if: a raise ──
-  for (const [mode, id] of Object.entries(RAISE_IDS)) {
-    fill(id, hasRaise ? tidyNum(mode === 'pct' ? (newSalary / salary - 1) * 100 : mode === 'usd' ? newSalary - salary : newSalary) : '');
-  }
-  $('inc-raise-salary').placeholder = fmt0(salary);
-  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'type a raise, or a new salary';
+  const mode = raiseModeOf(cfg);
+  for (const b of $('inc-raise-mode').children) b.classList.toggle('active', b.dataset.mode === mode);
+  fill('inc-raise', hasRaise ? tidyNum(mode === 'pct' ? (newSalary / salary - 1) * 100 : mode === 'usd' ? newSalary - salary : newSalary) : '');
+  $('inc-raise').placeholder = mode === 'salary' ? fmt0(salary) : '0';
+  $('inc-raise').setAttribute('aria-label', mode === 'pct' ? 'Raise, as a percentage' : mode === 'usd' ? 'Raise, in dollars a year' : 'New salary');
+  $('inc-raise-pre').hidden = mode === 'pct';
+  $('inc-raise-suf').hidden = mode !== 'pct';
+  const pctNow = hasRaise ? (newSalary / salary - 1) * 100 : null;
+  for (const b of $('inc-raise-picks').children) b.classList.toggle('on', pctNow != null && Math.abs(pctNow - Number(b.dataset.pick)) < 0.005);
+  $('inc-raise-clear').hidden = !hasRaise;
+  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'pick a raise, or type one';
 
   const spend = N.monthlySpending(c.allOps, through), spendYr = spend.monthly * 12;
   const share = Math.max(0, Math.min(100, Number(cfg.saveShare ?? 100))) / 100;
   const spendThen = spendYr + (d.net > 0 ? d.net * (1 - share) : 0);
   const sNow = N.savings(now.full, spendYr), sThen = N.savings(then.full, spendThen);
 
-  const up = d.gross >= 0;
+  // The answer first: what the raise adds to a paycheck and to the year, and
+  // how much of it is kept. The rest of the panel is the working.
+  const up = d.gross >= 0, total = Math.abs(d.gross);
+  $('inc-raise-figs').hidden = $('inc-raise-more').hidden = !hasRaise;
+  $('inc-raise-save').hidden = !hasRaise || !spend.months || d.net <= 0;
+  if (hasRaise) {
+    const bonusToo = Math.abs(then.bonusGross - now.bonusGross) > 0.5, sign = up ? '+' : '−';
+    setKpis('inc-raise-figs', [
+      kpiTile({ label: up ? 'More per paycheck' : 'Less per paycheck', value: sign + money(Math.abs(then.per.net - now.per.net)), tone: up ? 'pos' : 'neg', sub: `${money(now.per.net)} → ${money(then.per.net)} take-home` }),
+      kpiTile({ label: up ? 'More per year' : 'Less per year', value: sign + money0(Math.abs(d.net)), tone: up ? 'pos' : 'neg', sub: `take-home, of ${money0(total)} ${up ? 'more' : 'less'} gross${bonusToo ? ', bonus included' : ''}` }),
+      kpiTile({ label: up ? 'You keep' : 'Comes out of take-home', value: pct(Math.abs(d.net) / total), sub: `of the ${up ? 'raise' : 'cut'}; the rest is tax${Math.abs(d.pretax) > 0.5 ? ' and before-tax deductions' : ''}`,
+        spark: `<div class="meter" aria-hidden="true"><div style="width:${(Math.abs(d.net) / total * 100).toFixed(1)}%"></div></div>` }),
+    ]);
+    $('inc-save-out').innerHTML = `Savings rate <b>${pct(sNow.ofTakeHome, 1)}</b> → <b class="${sThen.ofTakeHome >= sNow.ofTakeHome ? 'pos' : 'neg'}">${pct(sThen.ofTakeHome, 1)}</b>, with ${money0(sThen.left - sNow.left)} more left over a year.`;
+  }
   $('inc-raise-bar').innerHTML = hasRaise ? (() => {
     const parts = [
       { name: up ? 'You keep' : 'Take-home lost', v: Math.abs(d.net), color: INC.net },
@@ -1123,11 +1143,7 @@ function renderIncome(c) {
       { name: 'Social Security + Medicare', v: Math.abs(d.ss + d.medicare), color: INC.fica },
       { name: 'Virginia', v: Math.abs(d.virginia), color: INC.virginia },
     ];
-    const total = Math.abs(d.gross), bonusToo = Math.abs(then.bonusGross - now.bonusGross) > 0.5;
-    return `<div class="inc-headline">${up
-      ? `Of ${money0(total)} more a year${bonusToo ? ' (the bonus rises with it)' : ''}, you keep <b class="pos">${money0(d.net)}</b>: ${pct(d.net / total)} of it, or <b>${money(then.per.net - now.per.net)}</b> more per paycheck.`
-      : `Of ${money0(total)} less a year, take-home falls by <b class="neg">${money0(-d.net)}</b>: ${money(now.per.net - then.per.net)} less per paycheck.`}</div>
-      ${stackBar(parts, total, 'Where the change in pay goes')}${stackLegend(parts, total)}`;
+    return `<div class="list-note raise-where">Where the ${money0(total)} ${up ? 'goes' : 'comes from'}</div>${stackBar(parts, total, 'Where the change in pay goes')}${stackLegend(parts, total)}`;
   })() : '';
 
   const chg = (a, b, { rate = false, good = 1 } = {}) => {
@@ -1162,8 +1178,8 @@ function renderIncome(c) {
   const band = v => pct(v, v * 1000 % 10 ? 2 : 0);
   $('inc-raise-note').innerHTML = (hasRaise
     ? `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
-    : `Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare. `)
-    + (spend.months ? `Spending is your average over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month). “Save” is the share of the extra take-home you would keep rather than spend.` : '');
+    : `Pick 3%, 5% or 10%, or type a raise as a percentage, in dollars a year, or as the new salary. Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare.`)
+    + (hasRaise && spend.months ? `The savings rate uses your average spending over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month).` : '');
 
   // ── This year ──
   const lastMonth = Number(through.slice(5, 7));
@@ -1206,8 +1222,11 @@ function renderIncome(c) {
     ${rates.calibrated && rates.fit && rates.taxScale < 0.9995 ? `Scaled to ${pct(rates.taxScale)} of the schedule, to match your take-home.` : ''}</p>`;
 }
 
-// Reads the form into a config. `raiseMode` is whichever raise box was typed in last.
+// Reads the form into a config. `raiseMode` is how the one raise box is read: a
+// percentage, dollars a year, or the new salary. Until it is chosen it is the
+// way the saved raise was given.
 let raiseMode = null;
+const raiseModeOf = cfg => raiseMode || cfg.raise?.mode || 'pct';
 function readIncome() {
   const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
   const cfg = { ...incSaved(), ...(incDraft || {}) };
@@ -1219,10 +1238,8 @@ function readIncome() {
   cfg.filing = $('inc-filing').value;
   cfg.netPay = num('inc-net') > 0 ? num('inc-net') : null;
   cfg.saveShare = Math.max(0, Math.min(100, num('inc-save-share') ?? 100));
-  if (raiseMode) {
-    const v = num(RAISE_IDS[raiseMode]);
-    cfg.raise = v == null || (raiseMode !== 'salary' && v === 0) ? null : { mode: raiseMode, value: v };
-  }
+  const mode = raiseModeOf(cfg), v = num('inc-raise');
+  cfg.raise = v == null || (mode !== 'salary' && v === 0) ? null : { mode, value: v };
   return cfg;
 }
 async function saveIncome(cfg) {
@@ -1235,7 +1252,6 @@ async function saveIncome(cfg) {
 const incomeView = document.querySelector('.view[data-view="salary"]');
 incomeView.addEventListener('input', ev => {
   if (!ev.target.matches('input, select')) return;
-  if (ev.target.dataset.raise) raiseMode = ev.target.dataset.raise;
   incDraft = readIncome();
   renderIncome(CTX);
 });
@@ -1243,7 +1259,16 @@ incomeView.addEventListener('change', ev => { if (ev.target.matches('input, sele
 incomeView.addEventListener('submit', ev => ev.preventDefault());
 incomeView.addEventListener('click', ev => {
   if (ev.target.closest('#inc-edit')) { incMode = incMode === 'summary' ? 'edit' : 'summary'; renderIncome(CTX); if (incMode === 'summary') $('inc-grid').scrollIntoView({ block: 'start' }); }
-  else if (ev.target.closest('#inc-raise-clear')) { raiseMode = null; saveIncome({ ...incSaved(), raise: null }); }
+  else if (ev.target.closest('#inc-raise-clear')) saveIncome({ ...incSaved(), raise: null });
+  else if (ev.target.closest('[data-pick]')) { raiseMode = 'pct'; saveIncome({ ...incSaved(), raise: { mode: 'pct', value: Number(ev.target.closest('[data-pick]').dataset.pick) } }); }
+  else if (ev.target.closest('#inc-raise-mode button')) {
+    // The same raise, said another way: 5% of $100,000 becomes $5,000, or $105,000.
+    const cfg = incSaved(), salary = Number(cfg.salary) || 0, to = N.raisedSalary(salary, cfg.raise);
+    raiseMode = ev.target.closest('button').dataset.mode;
+    const has = !!cfg.raise && salary > 0 && Math.abs(to - salary) >= 0.5;
+    const value = raiseMode === 'pct' ? (to / salary - 1) * 100 : raiseMode === 'usd' ? to - salary : to;
+    saveIncome({ ...cfg, raise: has ? { mode: raiseMode, value: Math.round(value * 1e4) / 1e4 } : null });   // kept finer than it is shown, so the salary does not drift
+  }
   else if (ev.target.closest('#inc-net-auto')) saveIncome({ ...incSaved(), netPay: null });
   else if (ev.target.closest('#inc-freq-fix')) saveIncome({ ...incSaved(), freq: ev.target.closest('#inc-freq-fix').dataset.freq });
 });
