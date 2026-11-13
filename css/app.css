@@ -712,6 +712,11 @@ tr.lapsed td { color: var(--ink3); }
   .txn-table td { vertical-align: top; }
   .data th, .data td { padding-left: 1rem; padding-right: 1rem; }
   .txn-desc { max-width: 46vw; }
+  /* Spending: the category table fits the screen, so amounts are not off to the side */
+  #sp-cats .col-bar { display: none; }
+  #sp-cats td:first-child { white-space: normal; overflow-wrap: anywhere; padding-left: 2.6rem; text-indent: -1.6rem; }
+  #sp-cats .cat-note { display: block; margin-top: 2px; text-indent: 0; text-transform: none; letter-spacing: 0; }
+  .hm-scroll { overflow-x: hidden; }
   .cp-row { grid-template-columns: 1.6rem 1fr 11rem; }
   .cp-row .bar-track, .cp-pct { display: none; }
   .cp-income-row .filter-label { display: none; }

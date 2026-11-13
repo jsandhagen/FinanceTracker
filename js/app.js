@@ -715,7 +715,7 @@ function renderSpending(c) {
         ${c.hasPrior ? `<td class="num col-hide-sm">${deltaHtml(d) || '<span class="dim">new</span>'}</td>` : ''}
         <td class="num dim col-hide-sm">${x.count}</td></tr>`;
     }).join('')}${back > 0.004 ? `<tr class="link" data-txn-cat="${N.PAID_BACK}">
-        <td><span class="swatch" style="background:${KIND_COLOR.reimburse}"></span>${N.PAID_BACK} <small class="dim">Venmo, Zelle and the like</small></td>
+        <td><span class="swatch" style="background:${KIND_COLOR.reimburse}"></span>${N.PAID_BACK} <small class="dim cat-note">Venmo, Zelle and the like</small></td>
         <td class="col-bar"></td><td class="num pos">−${money(back)}</td><td class="num dim"></td>
         ${c.hasPrior ? '<td class="num col-hide-sm"></td>' : ''}<td class="num dim col-hide-sm">${c.ops.filter(t => t.paid_back).length}</td></tr>` : ''}</tbody>` : `<tbody><tr><td class="empty">No spending in this period.</td></tr></tbody>`;
 
@@ -772,7 +772,23 @@ function renderHeatmap(c) {
   const daily = I.dailySpend(c.allOps);
   const end = A.localTs(isoLocal(Math.min(c.e, DATA_MAX)));
   const from = Math.max(A.localTs(isoLocal(c.s)), addDays(end, -370));  // first day of the period shown
-  const start = Math.max(A.localTs(isoLocal(DATA_MIN)), Math.min(from, addDays(end, -182)));
+  let start = Math.max(A.localTs(isoLocal(DATA_MIN)), Math.min(from, addDays(end, -182)));
+  // The grid is sized before the days are read: a phone shows only the weeks
+  // that fit its width, the latest ones, so the grid never scrolls sideways.
+  const first = new Date(start), padL = 30, padT = 18, avail = el.clientWidth - padL;
+  let gridStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - first.getDay());
+  let nWeeks = Math.ceil((end - gridStart.getTime() + DAY) / (7 * DAY)), trimmed = false;
+  let step = Math.max(16, Math.min(30, Math.floor(avail / nWeeks)));
+  if (isPhone() && avail > 0) {
+    step = Math.max(10, Math.min(30, Math.floor(avail / nWeeks)));
+    const fit = Math.max(1, Math.floor(avail / step));
+    if (nWeeks > fit) {
+      gridStart = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + (nWeeks - fit) * 7);
+      start = Math.max(start, gridStart.getTime()); nWeeks = fit;
+      trimmed = start > from;   // part of the period itself is left out
+    }
+  }
+  const shownFrom = Math.max(from, start), cell = step - (step < 16 ? 2 : 3);
   for (const k of [...daily.keys()]) { const ts = A.localTs(k); if (ts < start || ts > end) daily.delete(k); }
   const vals = [...daily.values()].filter(v => v > 0).sort((a, b) => a - b);
   if (!vals.length) { el.innerHTML = empty('No spending in this period.'); $('heat-meta').textContent = ''; return; }
@@ -780,17 +796,13 @@ function renderHeatmap(c) {
   const cuts = [q(0.25), q(0.5), q(0.8)];
   const level = v => (v <= cuts[0] ? 0 : v <= cuts[1] ? 1 : v <= cuts[2] ? 2 : 3);
 
-  const first = new Date(start), padL = 30, padT = 18;
-  const gridStart = new Date(first.getFullYear(), first.getMonth(), first.getDate() - first.getDay());
-  const nWeeks = Math.ceil((end - gridStart.getTime() + DAY) / (7 * DAY));
-  const step = Math.max(16, Math.min(30, Math.floor((el.clientWidth - padL) / nWeeks))), cell = step - 3;
   let rects = '', labels = '', lastMonth = -1, lastLabelX = -99, weeks = 0, peak = { v: 0, iso: '' }, n = 0, spendDays = 0;
   for (let d = new Date(gridStart), i = 0; d.getTime() <= end; d.setDate(d.getDate() + 1), i++) {
     const w = Math.floor(i / 7), dow = i % 7, ts = d.getTime();
     weeks = w + 1;
     if (ts < start) continue;
     const iso = isoLocal(ts), v = daily.get(iso) || 0, x = padL + w * step;
-    const inPeriod = ts >= from;
+    const inPeriod = ts >= shownFrom;
     if (inPeriod) { n++; if (v > 0) spendDays++; if (v > peak.v) peak = { v, iso }; }
     if (d.getMonth() !== lastMonth) {
       lastMonth = d.getMonth();
@@ -801,7 +813,7 @@ function renderHeatmap(c) {
     rects += `<rect x="${x + off}" y="${padT + dow * step + off}" width="${sz}" height="${sz}" ${inPeriod ? '' : ' class="out"'} fill="${v > 0 ? HEAT[level(v)] : ZERO}" data-tip="${A.fmtDate(iso)}|${v > 0 ? money(v) : 'No spending'}"/>`;
   }
   ['Mon', 'Wed', 'Fri'].forEach((nme, k) => { labels += `<text class="hm-label" x="0" y="${padT + (1 + k * 2) * step + 10}">${nme}</text>`; });
-  $('heat-meta').textContent = `${n - spendDays} no-spend days` + (peak.v ? ` · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}` : '') + (start < from ? ' · earlier weeks shown small' : '');
+  $('heat-meta').textContent = `${n - spendDays} no-spend days` + (peak.v ? ` · peak ${money0(peak.v)} on ${A.fmtDate(peak.iso)}` : '') + (trimmed ? ` · last ${nWeeks} weeks shown` : start < from ? ' · earlier weeks shown small' : '');
   el.innerHTML = `<div class="hm-scroll"><svg width="${padL + weeks * step}" height="${padT + 7 * step}" role="img" aria-label="Spending per day">${labels}${rects}</svg></div>
     <div class="legend hm-legend"><span>Less</span><i style="background:${ZERO}"></i>${HEAT.map(h => `<i style="background:${h}"></i>`).join('')}<span>More</span></div>`;
   const sc = el.querySelector('.hm-scroll'); sc.scrollLeft = sc.scrollWidth;
