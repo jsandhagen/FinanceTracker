@@ -1040,6 +1040,8 @@ function renderIncome(c) {
     : pay ? `Read from your deposits: ${esc(srcName(pay.merchant))}, ${money(pay.amount)} ${N.FREQ[pay.freq].label.toLowerCase()}. Type a figure to override it.`
       + (pay.freq !== cfg.freq ? ` Those deposits look ${N.FREQ[pay.freq].label.toLowerCase()}, not ${freq.label.toLowerCase()}. <button class="link-btn" id="inc-freq-fix" data-freq="${pay.freq}">Switch</button>` : '')
     : 'Enter what one paycheck deposits and your tax and deduction rates are backed out of it. Without it, the figures are a plain estimate.';
+  // Beside the summary the note only repeats it, unless it has something to act on.
+  $('inc-net-note').hidden = incMode === 'summary' && !$('inc-net-note').querySelector('button');
   $('inc-foot').textContent = `Estimates for tax year ${T.TAX_YEAR}: federal brackets and standard deduction, Social Security and Medicare, and Virginia's rates, standard deduction and personal exemption. Credits, itemized deductions and other income are not modelled. A bonus is usually withheld at a flat rate on the day and squared up when you file; the figures here are what it adds to the year. Not tax advice.`;
 
   if (!(salary > 0)) {
