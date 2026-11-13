@@ -543,6 +543,8 @@ tr.lapsed td { color: var(--ink3); }
 
 /* ── Ledger ── */
 .txn-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; padding: 1rem 1.4rem; border-bottom: 1px solid var(--line); }
+.txn-filters { display: contents; }
+#txn-filter-btn { display: none; }
 .amt-filter { display: flex; gap: 0.4rem; }
 .amt-filter input { width: 8.6rem; }
 .txn-date { color: var(--ink2); }
@@ -712,6 +714,16 @@ tr.lapsed td { color: var(--ink3); }
   .txn-table td { vertical-align: top; }
   .data th, .data td { padding-left: 1rem; padding-right: 1rem; }
   .txn-desc { max-width: 46vw; }
+  /* Ledger: search and one Filter button; the other filters open beneath them */
+  .txn-controls { padding: 1rem; }
+  .txn-controls .grow { flex: 1 1 0; min-width: 0; }
+  #txn-filter-btn { display: inline-flex; flex: none; }
+  #txn-filter-btn.on { border-color: var(--accent); color: var(--accent-hi); }
+  #txn-filter-n:not(:empty) { margin-left: 0.6rem; }
+  .txn-filters { display: none; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+  .txn-controls.open .txn-filters { display: flex; }
+  .txn-filters #txn-cat-select { flex: 1 1 100%; }
+  #txn-export { min-width: var(--tap); justify-content: center; }
   /* Spending: the category table fits the screen, so amounts are not off to the side */
   #sp-cats .col-bar { display: none; }
   #sp-cats td:first-child { white-space: normal; overflow-wrap: anywhere; padding-left: 2.6rem; text-indent: -1.6rem; }

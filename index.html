@@ -27,6 +27,7 @@
   <defs>
     <g id="i-overview" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></g>
     <g id="i-cashflow" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h4c3 0 3 8 6 8h2M2 12h4c3 0 3-8 6-8h2"/></g>
+    <g id="i-filter" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h12M4.5 8h7M7 12h2"/></g>
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
     <g id="i-income" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 13.5h12M3.5 11V8M8 11V5M12.5 11V2.5M10.5 4.5l2-2 2 2"/></g>
@@ -398,13 +399,16 @@
           <div class="panel-head">
             <span class="panel-title">Ledger</span>
             <span class="panel-meta" id="txn-count"></span>
-            <button class="btn small" id="txn-export"><svg viewBox="0 0 16 16" width="12" height="12"><use href="#i-download"/></svg> Export CSV</button>
+            <button class="btn small" id="txn-export" aria-label="Export CSV"><svg viewBox="0 0 16 16" width="12" height="12"><use href="#i-download"/></svg><span class="btn-label"> Export CSV</span></button>
           </div>
           <div class="txn-controls">
             <div class="input-icon grow">
               <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-search"/></svg>
               <input id="txn-search" type="search" placeholder="Search description (regex supported)" spellcheck="false" autocomplete="off" />
             </div>
+            <!-- Phones: the filters below fold away behind this button -->
+            <button class="btn" id="txn-filter-btn" aria-expanded="false" aria-controls="txn-filters"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-filter"/></svg> Filter<span id="txn-filter-n"></span></button>
+            <div class="txn-filters" id="txn-filters">
             <div class="seg" id="txn-dir">
               <button class="txn-dir-pill active" data-dir="">All</button>
               <button class="txn-dir-pill" data-dir="income">In</button>
@@ -424,6 +428,7 @@
             </div>
             <label class="check"><input type="checkbox" id="show-xfr" /> Transfers</label>
             <button class="btn small" id="txn-reset" hidden>Clear filters</button>
+            </div>
           </div>
           <div class="table-wrap txn-table-wrap">
             <table class="data txn-table">

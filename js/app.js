@@ -1399,6 +1399,11 @@ function renderTable() {
   const inSum = visible.reduce((s, t) => s + (t.amount > 0 ? t.amount : 0), 0), outSum = visible.reduce((s, t) => s + (t.amount < 0 ? -t.amount : 0), 0);
   $('txn-count').textContent = `${visible.length.toLocaleString()} rows · in ${money0(inSum)} · out ${money0(outSum)}`;
   $('txn-reset').hidden = !(searchRaw || activeCat !== 'all' || txnDir || amtOp || showTransfers);
+  // On a phone the filters sit behind one button, which says how many are set.
+  const nFilters = (activeCat !== 'all') + !!txnDir + !!(amtOp && !isNaN(amtNum)) + !!showTransfers;
+  $('txn-filter-n').textContent = nFilters ? `· ${nFilters}` : '';
+  $('txn-filter-btn').classList.toggle('on', nFilters > 0);
+  searchEl.placeholder = isPhone() ? 'Search' : 'Search description (regex supported)';
 
   const tbody = $('txn-tbody');
   const more = $('txn-more');
@@ -1450,6 +1455,10 @@ document.querySelectorAll('.txn-dir-pill').forEach(btn => {
     txnDir = btn.dataset.dir;
     renderTable();
   });
+});
+$('txn-filter-btn').addEventListener('click', ev => {
+  const open = ev.currentTarget.closest('.txn-controls').classList.toggle('open');
+  ev.currentTarget.setAttribute('aria-expanded', open);
 });
 $('txn-reset').addEventListener('click', () => {
   showTransfers = false; $('show-xfr').checked = false;
