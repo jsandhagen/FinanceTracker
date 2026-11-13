@@ -238,6 +238,7 @@ function setView(v, { push = true } = {}) {
   if (!VIEWS[v]) return;
   view = v;
   incDraft = null;
+  incMode = null;
   const top = PARENT[v] || v;
   document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
   // In the side rail the sub-item lights up under its parent; the phone's tab
@@ -990,11 +991,44 @@ const partsOf = y => [
   { name: 'Virginia income tax', v: y.virginia, color: INC.virginia },
 ];
 
+// Pay is entered once and then rarely changes, so the form leads the view only
+// until there is a salary ('setup'). After that the figures lead, and the pay
+// is a summary at the end ('summary') that opens to the form in place ('edit').
+// Decided when the view opens, so nothing moves while a field is being typed in.
+let incMode = null, incSetupLayout = null;
+function layoutIncome(cfg, pay, netPay) {
+  const entered = Number(incSaved().salary) > 0;
+  if (!incMode) incMode = entered ? 'summary' : 'setup';
+  const setup = incMode === 'setup';
+  if (incSetupLayout !== setup) {
+    incSetupLayout = setup;
+    $('inc-grid').append(...(setup ? ['inc-pay', 'inc-split-card', 'inc-raise-card', 'inc-year-card', 'inc-va-card']
+      : ['inc-split-card', 'inc-year-card', 'inc-raise-card', 'inc-va-card', 'inc-pay']).map(id => $(id)));
+    $('inc-va-card').className = `panel ${setup ? 'c5' : 'c7'}`;   // beside the short summary, the tax table has the room
+    $('inc-year-card').className = `panel ${setup ? 'c7' : 'c5'}`;
+  }
+  const summary = incMode === 'summary';
+  $('inc-form').hidden = summary;
+  $('inc-summary').hidden = !summary;
+  $('inc-edit').hidden = !entered;
+  $('inc-edit').textContent = summary ? 'Edit' : 'Done';
+  if (!summary) return;
+  const cell = (k, v, sub = '') => `<div><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const bonus = Number(cfg.bonus) > 0;
+  $('inc-summary').innerHTML =
+    cell('Salary', money0(Number(cfg.salary)), 'per year')
+    + cell('Paid', esc((N.FREQ[cfg.freq] || N.FREQ.biweekly).label), `${(N.FREQ[cfg.freq] || N.FREQ.biweekly).n} paychecks a year`)
+    + cell('Bonus', bonus ? (cfg.bonusUnit === 'pct' ? `${tidyNum(Number(cfg.bonus))}%` : money0(Number(cfg.bonus))) : 'None', bonus ? `${cfg.bonusUnit === 'pct' ? 'of salary, ' : ''}in ${MONTH_NAMES[(cfg.bonusMonth || 3) - 1]}` : '')
+    + cell('Filing status', esc([...$('inc-filing').options].find(o => o.value === cfg.filing)?.text || cfg.filing))
+    + cell('Take-home', netPay ? money(netPay) : '—', netPay ? (Number(cfg.netPay) > 0 ? 'per paycheck, entered by hand' : 'per paycheck, from your deposits') : 'not known yet');
+}
+
 function renderIncome(c) {
   const cfg = incDraft || incSaved();
   const salary = Number(cfg.salary) || 0;
   const pay = N.detectPaycheck(SCHED);
   const netPay = Number(cfg.netPay) > 0 ? Number(cfg.netPay) : pay?.amount || null;
+  layoutIncome(cfg, pay, netPay);
   const eff = { ...cfg, netPay };
   const freq = N.FREQ[cfg.freq] || N.FREQ.biweekly;
 
@@ -1206,7 +1240,8 @@ incomeView.addEventListener('input', ev => {
 incomeView.addEventListener('change', ev => { if (ev.target.matches('input, select')) saveIncome(readIncome()); });
 incomeView.addEventListener('submit', ev => ev.preventDefault());
 incomeView.addEventListener('click', ev => {
-  if (ev.target.closest('#inc-raise-clear')) { raiseMode = null; saveIncome({ ...incSaved(), raise: null }); }
+  if (ev.target.closest('#inc-edit')) { incMode = incMode === 'summary' ? 'edit' : 'summary'; renderIncome(CTX); if (incMode === 'summary') $('inc-grid').scrollIntoView({ block: 'start' }); }
+  else if (ev.target.closest('#inc-raise-clear')) { raiseMode = null; saveIncome({ ...incSaved(), raise: null }); }
   else if (ev.target.closest('#inc-net-auto')) saveIncome({ ...incSaved(), netPay: null });
   else if (ev.target.closest('#inc-freq-fix')) saveIncome({ ...incSaved(), freq: ev.target.closest('#inc-freq-fix').dataset.freq });
 });

@@ -286,10 +286,13 @@
       <!-- Salary & raises: what pay comes to after tax, and what a raise would do -->
       <section class="view" data-view="salary" hidden>
         <div class="kpi-row" id="inc-kpis"></div>
-        <div class="grid">
-          <div class="panel c5">
-            <div class="panel-head"><span class="panel-title">Your pay</span><span class="panel-meta">Saved with your settings</span></div>
+        <!-- The order of these panels is set by layoutIncome: the form leads
+             only until a salary is entered, then it is a summary at the end. -->
+        <div class="grid" id="inc-grid">
+          <div class="panel c5" id="inc-pay">
+            <div class="panel-head"><span class="panel-title">Your pay</span><span class="panel-meta">Saved with your settings</span><button type="button" class="btn small" id="inc-edit" hidden>Edit</button></div>
             <div class="panel-body">
+              <div class="pay-sum" id="inc-summary" hidden></div>
               <form class="inc-form" id="inc-form" autocomplete="off">
                 <label for="inc-salary">Salary, per year</label>
                 <div class="input-affix"><span>$</span><input id="inc-salary" data-inc="salary" type="number" inputmode="decimal" min="0" step="1000" placeholder="e.g. 95000" /></div>
@@ -322,11 +325,11 @@
               <div class="note" id="inc-net-note"></div>
             </div>
           </div>
-          <div class="panel c7">
+          <div class="panel c7" id="inc-split-card">
             <div class="panel-head"><span class="panel-title">Where a paycheck goes</span><span class="panel-meta" id="inc-split-meta"></span></div>
             <div class="panel-body flush" id="inc-split"></div>
           </div>
-          <div class="panel c12">
+          <div class="panel c12" id="inc-raise-card">
             <div class="panel-head"><span class="panel-title">What if: a raise</span><span class="panel-meta" id="inc-raise-meta"></span></div>
             <div class="panel-body">
               <div class="inc-raise-row">
@@ -347,7 +350,7 @@
               <div class="note" id="inc-raise-note"></div>
             </div>
           </div>
-          <div class="panel c7">
+          <div class="panel c7" id="inc-year-card">
             <div class="panel-head"><span class="panel-title">This year</span><span class="panel-meta" id="inc-year-meta"></span></div>
             <div class="panel-body">
               <div class="legend" id="inc-year-legend"></div>
@@ -355,7 +358,7 @@
               <div id="inc-year-sum"></div>
             </div>
           </div>
-          <div class="panel c5">
+          <div class="panel c5" id="inc-va-card">
             <div class="panel-head"><span class="panel-title">Virginia income tax</span><span class="panel-meta" id="inc-va-meta"></span></div>
             <div class="panel-body flush" id="inc-va"></div>
           </div>

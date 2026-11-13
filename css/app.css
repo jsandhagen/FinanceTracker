@@ -807,6 +807,12 @@ tr.lapsed td { color: var(--ink3); }
 .inc-form label { color: var(--ink2); font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.06em; }
 .inc-form .input-affix, .inc-form .select { width: 100%; }
 .inc-form .input-affix input { flex: 1; width: auto; min-width: 0; }
+/* The pay once entered: a row of figures in place of the form. */
+.pay-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.6rem 2rem; margin-bottom: 1.2rem; }
+.pay-sum > div { display: flex; flex-direction: column; min-width: 0; }
+.pay-sum span { color: var(--ink3); font-size: 1.2rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+.pay-sum b { font-size: 1.8rem; font-weight: 500; margin-top: 0.3rem; }
+.pay-sum small { color: var(--ink3); font-size: 1.25rem; }
 .inc-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 0.8rem; }
 .input-affix > .suffix { padding: 0 0.8rem 0 0; }
 .inc-raise-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-bottom: 1.4rem; }
@@ -894,3 +900,10 @@ tr.lapsed td { color: var(--ink3); }
 }
 /* Text size, in Settings. */
 #text-size button { min-width: 5.2rem; }
+/* Salary: the row names wrap, so the figures beside them stay in view. */
+.view[data-view="salary"] .data td:first-child { white-space: normal; }
+.view[data-view="salary"] .data th, .view[data-view="salary"] .data td { padding-left: 1.2rem; padding-right: 1.2rem; }
+@media (max-width: 640px) {
+  .view[data-view="salary"] .data th, .view[data-view="salary"] .data td, #cf-table th, #cf-table td { padding-left: 0.7rem; padding-right: 0.7rem; }
+  .view[data-view="salary"] .data th { white-space: normal; }
+}
