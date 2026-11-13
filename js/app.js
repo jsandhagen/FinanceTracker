@@ -2862,7 +2862,11 @@ async function installAppUpdate() {
     // Updates keep everything; a fresh sync copy first all the same.
     if (state.sync) await syncNow({ quiet: true });
     toast('Downloading the update…');
-    await native.update.install(appNewer.url);
+    const sent = await native.update.install(appNewer.url);
+    // The app could not match the download's signature to its own. Android's
+    // installer checks it for real; this is only so a refusal is not "fixed"
+    // by uninstalling, which would delete the data.
+    if (sent?.verified === false) toast('Android will check this update before installing it. If it refuses, do not uninstall the app to get it: your data would go with it.', true);
   } catch (e) {
     toast(e.message, true);
   }

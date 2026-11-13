@@ -145,8 +145,12 @@ An update keeps everything, the Plaid keys included, and this is guarded at each
 - **Only an update that can install over the app is published.** The build workflow refuses to
   publish a build that is not signed with the app's key (its certificate fingerprint is checked)
   or not numbered above the last one. Version numbers are minutes since 2026, so they only grow.
-- **The app checks the download too.** It refuses an update signed with another key and tells you
-  not to uninstall to get it.
+- **The app checks the download too, but Android decides.** If the app cannot match the update's
+  key to its own it still hands it to Android's installer, which is the real check, and warns you
+  not to uninstall if the installer refuses. (The app used to refuse such a download itself; on a
+  real phone it refused a correctly signed one, which blocked every later update. A build from
+  before that was fixed has to be updated by hand once: open the APK's address from step 2 in
+  Chrome on the phone and install it over the app. Do not uninstall first.)
 - **Where the data lives is pinned.** The app's storage belongs to its package id and its internal
   address (`https://localhost`); both are fixed in `capacitor.config.json`, and a test fails if
   either changes.

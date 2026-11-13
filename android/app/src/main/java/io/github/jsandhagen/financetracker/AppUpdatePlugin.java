@@ -28,6 +28,11 @@ import java.net.URL;
  * signed with the same key as the app already installed, so a download that
  * was tampered with cannot replace it, and your data is kept.
  *
+ * The installer is the one judge of that. The app compares the signatures too,
+ * but only to warn: its own reading of a downloaded file has been wrong on a
+ * real phone (it refused a correctly signed update, and with it every update
+ * after), so a mismatch here never stops the download reaching the installer.
+ *
  * JS: Capacitor.nativePromise('AppUpdate', 'info' | 'allowInstalls' | 'install', { url })
  */
 @CapacitorPlugin(name = "AppUpdate")
@@ -85,13 +90,19 @@ public class AppUpdatePlugin extends Plugin {
                 if (!dir.exists() && !dir.mkdirs()) throw new java.io.IOException("no room for the download");
                 File apk = new File(dir, "FinanceTracker.apk");
                 download(url, apk);
-                // Android would refuse it anyway; saying so here keeps anyone from
-                // "fixing" that by uninstalling, which would delete the data.
-                if (!sameSigner(apk)) {
+                PackageInfo theirs = getContext().getPackageManager().getPackageArchiveInfo(apk.getPath(), 0);
+                if (theirs != null && !getContext().getPackageName().equals(theirs.packageName)) {
                     apk.delete();
-                    call.reject("This update is not signed with the same key as the app you have, so it was not installed. Do not uninstall the app to get it: your data would go with it.", "WRONG_SIGNER");
+                    call.reject("That download is not FinanceTracker, so it was not installed.", "WRONG_APP");
                     return;
                 }
+                // true: the same key. false or null: it differs, or could not be
+                // read. Either way Android's installer decides; the app is told,
+                // so it can say not to uninstall if the installer refuses.
+                Boolean same = sameSigner(apk);
+                if (!Boolean.TRUE.equals(same)) android.util.Log.w("AppUpdate", "signature check: " + (same == null ? "could not be read" : "differs") + "; left to the installer");
+                JSObject out = new JSObject();
+                out.put("verified", Boolean.TRUE.equals(same));
                 Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setDataAndType(uri, "application/vnd.android.package-archive");
@@ -99,7 +110,7 @@ public class AppUpdatePlugin extends Plugin {
                 getActivity().runOnUiThread(() -> {
                     try {
                         getContext().startActivity(intent);
-                        call.resolve();
+                        call.resolve(out);
                     } catch (Exception e) {
                         call.reject("Could not open the installer: " + e.getMessage(), e);
                     }
@@ -110,29 +121,44 @@ public class AppUpdatePlugin extends Plugin {
         }).start();
     }
 
+    /**
+     * Whether the downloaded APK carries a certificate the installed app is
+     * signed with: true, false, or null when either could not be read. Both are
+     * read every way Android offers, since which of them answers for a file on
+     * disk differs between versions.
+     */
     @SuppressWarnings("deprecation")
-    private boolean sameSigner(File apk) throws Exception {
-        PackageManager pm = getContext().getPackageManager();
-        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
-        PackageInfo mine = pm.getPackageInfo(getContext().getPackageName(), flags);
-        PackageInfo theirs = pm.getPackageArchiveInfo(apk.getPath(), flags);
-        if (theirs == null || !getContext().getPackageName().equals(theirs.packageName)) return false;
-        java.util.Set<String> a = signers(mine), b = signers(theirs);
-        return !a.isEmpty() && a.equals(b);
+    private Boolean sameSigner(File apk) {
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            java.util.Set<String> mine = new java.util.HashSet<>(), theirs = new java.util.HashSet<>();
+            java.util.List<Integer> ways = new java.util.ArrayList<>();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ways.add(PackageManager.GET_SIGNING_CERTIFICATES);
+            ways.add(PackageManager.GET_SIGNATURES);
+            for (int flags : ways) {
+                try { addSigners(mine, pm.getPackageInfo(getContext().getPackageName(), flags)); } catch (Exception ignored) { }
+                try { addSigners(theirs, pm.getPackageArchiveInfo(apk.getPath(), flags)); } catch (Exception ignored) { }
+            }
+            if (mine.isEmpty() || theirs.isEmpty()) return null;
+            for (String s : theirs) if (mine.contains(s)) return true;
+            return false;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @SuppressWarnings("deprecation")
-    private static java.util.Set<String> signers(PackageInfo p) {
-        Signature[] sigs;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            sigs = p.signingInfo == null ? null
-                : p.signingInfo.hasMultipleSigners() ? p.signingInfo.getApkContentsSigners() : p.signingInfo.getSigningCertificateHistory();
-        } else {
-            sigs = p.signatures;
+    private static void addSigners(java.util.Set<String> out, PackageInfo p) {
+        if (p == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && p.signingInfo != null) {
+            add(out, p.signingInfo.getApkContentsSigners());
+            add(out, p.signingInfo.getSigningCertificateHistory());
         }
-        java.util.Set<String> out = new java.util.HashSet<>();
-        if (sigs != null) for (Signature s : sigs) out.add(s.toCharsString());
-        return out;
+        add(out, p.signatures);
+    }
+
+    private static void add(java.util.Set<String> out, Signature[] sigs) {
+        if (sigs != null) for (Signature s : sigs) if (s != null) out.add(s.toCharsString());
     }
 
     private static void download(String from, File to) throws Exception {
