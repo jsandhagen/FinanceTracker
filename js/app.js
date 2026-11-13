@@ -61,7 +61,7 @@ const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLoca
 // for signed figures in text, where the sign says it too.
 const C = {
   in: '#3987e5', out: '#d95926', kept: '#199e70', lead: '#5aa2f5',
-  ink: '#ededed', ink2: '#b4b4b4', ink3: '#7a7a7a',
+  ink: '#ededed', ink2: '#c2c2c2', ink3: '#969696',
   grid: 'rgba(255,255,255,0.1)', surface: '#060606', other: '#6e6e6e',
 };
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'];
@@ -141,7 +141,6 @@ function initCharts() {
   d.color = C.ink3;
   d.borderColor = C.grid;
   d.font.family = MONO;
-  d.font.size = 10;
   d.maintainAspectRatio = false;
   d.animation.duration = 420;
   d.animation.easing = 'easeOutQuart';
@@ -149,14 +148,25 @@ function initCharts() {
   d.plugins.legend.labels.boxHeight = 2;
   d.plugins.legend.labels.padding = 14;
   d.plugins.legend.labels.color = C.ink2;
-  d.plugins.legend.labels.font = { family: MONO, size: 10 };
   d.plugins.legend.align = 'start';
   Object.assign(d.plugins.tooltip, {
     backgroundColor: '#000', borderColor: '#4c90f0', borderWidth: 1, cornerRadius: 0, padding: 9,
     titleColor: C.ink2, bodyColor: C.ink, boxWidth: 8, boxHeight: 8, boxPadding: 4,
-    titleFont: { family: MONO, size: 10, weight: '500' }, bodyFont: { family: MONO, size: 11 }, footerFont: { family: MONO, size: 11 },
   });
+  chartFonts();
   Chart.register(crosshair, glow);
+}
+
+// The console's scale: 1 at the normal size, more in a wide window or with a
+// larger text size in Settings (the root font size in css/app.css). Charts are
+// drawn on a canvas, so their type is sized from it by hand.
+const uiScale = () => parseFloat(getComputedStyle(document.documentElement).fontSize) / 10 || 1;
+let chartScale = 0;
+function chartFonts() {
+  const k = chartScale = uiScale(), d = Chart.defaults;
+  d.font.size = 11.5 * k;
+  d.plugins.legend.labels.font = { family: MONO, size: 11.5 * k };
+  Object.assign(d.plugins.tooltip, { titleFont: { family: MONO, size: 11.5 * k, weight: '500' }, bodyFont: { family: MONO, size: 12.5 * k }, footerFont: { family: MONO, size: 12.5 * k } });
 }
 
 function chart(id, cfg) {
@@ -232,16 +242,19 @@ function setView(v, { push = true } = {}) {
   document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
   // In the side rail the sub-item lights up under its parent; the phone's tab
   // bar has no sub-items, so there the parent stands for both.
-  document.querySelectorAll('.nav-item').forEach(b => {
+  document.querySelectorAll('.nav-item[data-view]').forEach(b => {
     const sub = b.classList.contains('nav-sub');
-    b.classList.toggle('active', b.dataset.view === v || (b.dataset.view === top && !b.closest('.nav')));
+    b.classList.toggle('active', b.dataset.view === v || (b.dataset.view === top && !!b.closest('.tabbar')));
     b.classList.toggle('open', !sub && b.dataset.view === top && top !== v);
   });
+  // The phone's last tab stands for every view that has no tab of its own.
+  $('tab-more').classList.toggle('active', !document.querySelector(`.tabbar [data-view="${top}"]`));
+  closeMore();
   moveNav();
   $('subnav').hidden = !SUBS[top];
   $('subnav-seg').innerHTML = (SUBS[top] || []).map(([k, label]) => `<button data-goto="${k}"${k === v ? ' class="active"' : ''}>${esc(label)}</button>`).join('');
   $('view-title').textContent = PARENT[v] ? `${VIEWS[top]} / ${VIEWS[v]}` : VIEWS[v];
-  $('filter-bar').hidden = RANGE_FREE.has(v);
+  $('filter-bar').hidden = $('period-chip').hidden = RANGE_FREE.has(v);
   if (push && location.hash !== '#' + v) {
     if (history.state?.layer) history.replaceState({ view: v }, '', '#' + v);
     else history.pushState({ view: v }, '', '#' + v);
@@ -358,7 +371,14 @@ function renderActive() {
 }
 
 let resizeTimer;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (view === 'cashflow' || view === 'spending') renderActive(); }, 150); });
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const rescaled = chartsReady && Math.abs(uiScale() - chartScale) > 0.01;   // a wider window carries larger type
+    if (rescaled) chartFonts();
+    if (rescaled || view === 'cashflow' || view === 'spending') renderActive();
+  }, 150);
+});
 
 // A stat tile. `good` says whether the change is welcome, which is not the same
 // as whether it went up: spending going up is not.
@@ -602,14 +622,16 @@ function renderSankey(c) {
   const label = n => `${n.name}|${money(n.total)} · ${pct(n.total / total, 1)} of ${money0(total)}`;
   for (const n of left) { svg += ribbon(nodeW, n.y, mid.x, yl, n.h, n.color, label(n), true); yl += n.total * scale; }
   for (const n of right) { svg += ribbon(mid.x + nodeW, yr, n.x, n.y, n.h, n.color, label(n), false); yr += n.total * scale; }
-  const max = narrow ? 14 : 26;
+  // A name gets the room its half of the drawing has left beside the figure.
+  const charW = 8.2 * uiScale(), fit = val => Math.max(5, Math.min(26, Math.floor((W / 2 - nodeW - 14) / charW) - val.length - 1));
   for (const n of left) {
     svg += `<rect x="0" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
-      <text class="sk-label" x="${nodeW + 8}" y="${n.y + n.h / 2}" dy="0.35em">${esc(clip(n.name, max))} <tspan class="sk-val">${moneyK(n.total)}</tspan></text>`;
+      <text class="sk-label" x="${nodeW + 8}" y="${n.y + n.h / 2}" dy="0.35em">${esc(clip(n.name, fit(moneyK(n.total))))} <tspan class="sk-val">${moneyK(n.total)}</tspan></text>`;
   }
   for (const n of right) {
+    const val = narrow ? moneyK(n.total) : `${moneyK(n.total)} · ${pct(n.total / total)}`;   // the share is in the tip on a phone
     svg += `<rect x="${n.x}" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
-      <text class="sk-label${n.cat ? ' link' : ''}" ${n.cat ? `data-txn-cat="${esc(n.cat)}"` : ''} x="${n.x - 8}" y="${n.y + n.h / 2}" dy="0.35em" text-anchor="end">${esc(clip(n.name, max))} <tspan class="sk-val">${moneyK(n.total)} · ${pct(n.total / total)}</tspan></text>`;
+      <text class="sk-label${n.cat ? ' link' : ''}" ${n.cat ? `data-txn-cat="${esc(n.cat)}"` : ''} x="${n.x - 8}" y="${n.y + n.h / 2}" dy="0.35em" text-anchor="end">${esc(clip(n.name, fit(val)))} <tspan class="sk-val">${val}</tspan></text>`;
   }
   svg += `<rect x="${mid.x}" y="${mid.y}" width="${nodeW}" height="${mid.h}" fill="${C.ink}"/>`;
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Income sources flowing into spending categories"><defs>${defs}</defs>${svg}</svg>`;
@@ -1442,7 +1464,32 @@ function setDateInputs(startMs, endMs) {
 }
 function updateRangeDisp(startMs, endMs) {
   $('range-disp').textContent = `${Math.round((endMs - startMs) / DAY)} days`;
+  $('period-chip').textContent = PRESET_NAMES[rangePreset] || 'Custom';
 }
+const PRESET_NAMES = { 30: '1M', 90: '3M', 180: '6M', ytd: 'YTD', 365: '1Y', 0: 'All' };
+
+// On a phone the period is one chip in the top bar, and the same controls
+// (the filter bar itself, moved) open as a sheet from the foot of the screen.
+const periodOverlay = $('period-overlay'), phoneWidth = matchMedia('(max-width: 640px)');
+function placePeriod() {
+  const bar = $('filter-bar');
+  if (phoneWidth.matches) $('period-body').appendChild(bar);
+  else { $('demo-banner').before(bar); closePeriod(); }
+}
+function closePeriod() { periodOverlay.classList.remove('open'); }
+$('period-chip').addEventListener('click', () => periodOverlay.classList.add('open'));
+$('period-close').addEventListener('click', closePeriod);
+periodOverlay.addEventListener('click', ev => { if (ev.target === periodOverlay || ev.target.closest('.preset-btn')) closePeriod(); });
+phoneWidth.addEventListener('change', placePeriod);
+placePeriod();
+
+// The rest of the menu, for the phone's tab bar.
+const moreOverlay = $('more-overlay');
+function closeMore() { $('more-overlay').classList.remove('open'); }
+$('tab-more').addEventListener('click', () => moreOverlay.classList.add('open'));
+$('more-close').addEventListener('click', closeMore);
+moreOverlay.addEventListener('click', ev => { if (ev.target === moreOverlay) closeMore(); });
+$('more-settings').addEventListener('click', () => { closeMore(); openSettings(); });
 function getInputMs() {
   const sv = $('date-start').value, ev = $('date-end').value;
   if (!sv || !ev) return [NaN, NaN];
@@ -2275,12 +2322,27 @@ document.addEventListener('keydown', ev => {
   closeCmd();
   closeDrawer();
   closeSettings();
+  closePeriod();
+  closeMore();
   closeRefresh();
   closeInstall();
   closePicker();
 });
 
+// Text size is kept per device: a phone and a monitor want different answers.
+$('text-size').addEventListener('click', ev => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  document.documentElement.dataset.text = b.dataset.text;
+  try { localStorage.setItem('ft-text', b.dataset.text); } catch {}
+  renderSettings();
+  if (chartsReady) chartFonts();
+  if (!$('dashboard').hidden) renderActive();
+});
+
 function renderSettings() {
+  const size = document.documentElement.dataset.text || '';
+  for (const b of $('text-size').children) b.classList.toggle('active', b.dataset.text === size);
   $('cc-start').value = state.settings.cc_start || '';
   const m = Object.entries(state.rules.merchant);
   const a = state.rules.amount_rules;

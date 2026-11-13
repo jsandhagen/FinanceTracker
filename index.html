@@ -18,6 +18,8 @@
   <link rel="preload" href="vendor/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="css/app.css" />
   <script src="vendor/chart.umd.min.js"></script>
+  <!-- The text size chosen in Settings, before the first paint. -->
+  <script>try { document.documentElement.dataset.text = localStorage.getItem('ft-text') || ''; } catch (e) {}</script>
 </head>
 <body>
 
@@ -35,6 +37,7 @@
     <g id="i-plus" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 3v10M3 8h10"/></g>
     <g id="i-cog" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></g>
     <g id="i-download" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></g>
+    <g id="i-more" fill="currentColor"><rect x="2" y="7" width="2.4" height="2.4"/><rect x="6.8" y="7" width="2.4" height="2.4"/><rect x="11.6" y="7" width="2.4" height="2.4"/></g>
     <g id="i-x" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M4 4l8 8M12 4l-8 8"/></g>
     <g id="i-chevron" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M9 4L5 8l4 4M13 4L9 8l4 4"/></g>
     <g id="i-accounts" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3.5" width="12" height="9"/><path d="M2 6.5h12M4.5 10h3"/></g>
@@ -112,6 +115,7 @@
           <b class="prompt">&gt;</b><span>Search or jump to…</span><kbd id="cmd-kbd">Ctrl K</kbd>
         </button>
         <div class="topbar-actions">
+          <button class="btn period-chip" id="period-chip" aria-haspopup="dialog" title="Period shown"></button>
           <button class="asof" id="asof" title="How fresh the data is. Click to refresh it."></button>
           <button class="btn primary" id="refresh-open" title="Bring in new Capital One exports; anything already saved is skipped">
             <svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-download"/></svg><span>Refresh data</span>
@@ -441,12 +445,33 @@
   <nav class="tabbar" id="tabbar">
     <button class="nav-item" data-view="overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span></button>
     <button class="nav-item" data-view="cashflow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Flow</span></button>
-    <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
     <button class="nav-item" data-view="spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span></button>
-    <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
     <button class="nav-item" data-view="transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Ledger</span></button>
-    <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
+    <button class="nav-item" id="tab-more" aria-haspopup="dialog"><svg viewBox="0 0 16 16"><use href="#i-more"/></svg><span>More</span></button>
   </nav>
+</div>
+
+<!-- ── Phone: the period, as a sheet (the filter bar moves in here) ── -->
+<div class="overlay bottom" id="period-overlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="period-title">
+    <div class="sheet-head"><h2 id="period-title">Period</h2><button class="icon-btn" id="period-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
+    <div id="period-body"></div>
+  </div>
+</div>
+
+<!-- ── Phone: the views that are not on the tab bar ── -->
+<div class="overlay bottom" id="more-overlay">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="more-title">
+    <div class="sheet-head"><h2 id="more-title">More</h2><button class="icon-btn" id="more-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
+    <div class="more-list" id="more-list">
+      <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
+      <button class="nav-item" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
+      <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
+      <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
+      <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
+      <button class="nav-item" id="more-settings"><svg viewBox="0 0 16 16"><use href="#i-cog"/></svg><span>Settings</span></button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Transaction detail ── -->
@@ -574,6 +599,14 @@
       <button class="icon-btn" id="close-settings" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button>
     </div>
     <div class="sheet-body">
+
+    <div class="set-sec">
+      <h3>Text size</h3>
+      <p>Makes everything larger or smaller on this device. Wide windows already scale up by themselves.</p>
+      <div class="set-row"><div class="seg" id="text-size">
+        <button data-text="s">Small</button><button data-text="">Normal</button><button data-text="l">Large</button><button data-text="xl">Largest</button>
+      </div></div>
+    </div>
 
     <div class="set-sec">
       <h3>Sync between devices</h3>
