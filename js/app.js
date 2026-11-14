@@ -76,6 +76,7 @@ let ALL_TXN = [];     // derived: categorized, newest first
 let STREAMS = [];
 let SCHED = [];       // STREAMS with their next expected date
 let BALANCE = [];
+let ACCTS = new Map(); // account -> latest known balance (a card: what is owed, negative)
 let DATA_MIN = 0, DATA_MAX = 0;   // first moment of the first day, last moment of the last
 let DATA_LAST = 0;                // first moment of the last day
 let CAT_SLOT = {};    // category -> series colour, fixed by all-time rank
@@ -215,12 +216,12 @@ document.addEventListener('pointermove', ev => {
 document.addEventListener('scroll', hideTip, true);
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', income: 'Income', salary: 'Salary & raises', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
+const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', outlook: 'Outlook', income: 'Income', salary: 'Salary & raises', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
 const PARENT = { salary: 'income', budgets: 'spending' };   // sub-items in the menu
 // The tabs across the top of a section with sub-items.
 const SUBS = { income: [['income', 'Sources'], ['salary', 'Salary & raises']], spending: [['spending', 'Breakdown'], ['budgets', 'Budgets']] };
-const NAV_KEYS = Object.keys(VIEWS).filter(v => !PARENT[v]); // what the number keys 1-7 open
-const RANGE_FREE = new Set(['salary', 'budgets', 'recurring', 'accounts']); // these keep their own clock
+const NAV_KEYS = Object.keys(VIEWS).filter(v => !PARENT[v]); // what the number keys 1-8 open
+const RANGE_FREE = new Set(['outlook', 'salary', 'budgets', 'recurring', 'accounts']); // these keep their own clock
 
 function showView() {
   const has = state.transactions.length > 0;
@@ -322,6 +323,7 @@ function rebuild(keepRange) {
   for (const t of ALL_TXN) if (t.balance != null && accts.get(t.account) == null) accts.set(t.account, t.balance);
   // A linked card reports what is owed on it, shown as a negative.
   for (const [a, c] of Object.entries(state.settings.plaid?.cards || {})) if (accts.has(a) && typeof c.balance === 'number') accts.set(a, -c.balance);
+  ACCTS = accts;
   $('acct-badges').innerHTML = [...accts].sort((a, b) => a[0].localeCompare(b[0])).map(([a, bal]) =>
     `<div class="acct"><span class="acct-name">${esc(a)}</span><span class="acct-bal">${bal == null ? '' : money0(bal)}</span></div>`).join('');
 
@@ -367,7 +369,7 @@ function recompute(startMs, endMs) {
 function renderActive() {
   if (!CTX || $('dashboard').hidden) return;
   hideTip();
-  ({ overview: renderOverview, cashflow: renderCashflow, spending: renderSpending,
+  ({ overview: renderOverview, cashflow: renderCashflow, outlook: renderOutlook, spending: renderSpending,
     budgets: renderBudgets, income: renderSources, salary: renderIncome, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
 }
 
@@ -1312,6 +1314,140 @@ function renderRecurring() {
   $('rec-upcoming-meta').textContent = soon.length ? `after ${shortDate(DATA_MAX)}` : '';
   $('rec-upcoming').innerHTML = soon.length ? soon.map(upcomingRow).join('') : empty('Nothing expected in the next 30 days.');
 }
+
+// ── Outlook ───────────────────────────────────────────────────────────────────
+// The balance carried forward from the last day of data: detected bills and
+// paychecks on their dates, plus everyday spending at its recent rate. Travel
+// is left out of that rate, so what the forecast leaves free is what there is
+// for a trip (or any other large one-off).
+let outTry = { amt: 0, date: '' };
+const outSaved = () => state.settings.outlook || {};
+// Money that leaves the accounts counted here without being spending: regular
+// investment contributions and loan payments, and transfers to savings when
+// savings is not counted.
+function transferStreams(countSavings) {
+  const cats = new Set(['Investment Transfer', 'Loan Payment', ...(countSavings ? [] : ['Savings Transfer'])]);
+  const out = ALL_TXN.filter(t => t.is_transfer && t.amount < 0 && cats.has(t.category) && !/^credit card|saving/i.test(t.account));
+  return A.findRecurringStreams(out.map(t => ({ ...t, is_transfer: false })))
+    .map(s => ({ s, idx: -1, ...I.schedule(s, DATA_LAST) }));
+}
+function outlook() {
+  const cfg = outSaved(), countSavings = !!cfg.savings, days = [30, 60, 90].includes(cfg.days) ? cfg.days : 90;
+  const last = BALANCE[BALANCE.length - 1];
+  if (!last) return null;
+  const savings = [...ACCTS].filter(([a, b]) => /saving/i.test(a) && b != null).reduce((s, [, b]) => s + b, 0);
+  const card = last.cc_outstanding, checking = last.total_bank - savings;
+  const start = checking - card + (countSavings ? savings : 0);
+  const live = SCHED.filter(x => x.active && (countSavings || x.s.category !== 'Interest Income'));
+  const bills = new Set(live.filter(x => x.s.direction === 'expense').map(x => x.s.merchant));
+  const allOps = ALL_TXN.filter(t => !t.is_transfer);
+  const rate = I.spendRate(allOps, DATA_LAST, { skip: t => t.category === 'Travel' || bills.has(t.merchant) || (t.amount > 0 && !t.refund) });
+  const sched = [...live, ...transferStreams(countSavings)];
+  const events = I.expected(sched, DATA_LAST, days);
+  const series = I.forecast({ start, asOf: DATA_LAST, events, perDay: rate.perDay, days });
+  const billsMonth = sched.filter(x => x.s.direction === 'expense').reduce((s, x) => s + x.monthly, 0);
+  const cushion = cfg.cushion != null ? cfg.cushion : Math.ceil(billsMonth / 100) * 100;
+  const all = I.spendRate(allOps, DATA_LAST, { skip: t => t.amount > 0 && !t.refund });
+  const need = I.spendRate(allOps, DATA_LAST, { skip: t => !I.ESSENTIAL.has(t.category) || (t.amount > 0 && !t.refund) });
+  return { days, countSavings, checking, savings, card, start, rate, events, series, cushion, cushionSet: cfg.cushion != null, billsMonth,
+    monthAll: all.perDay * 30.44, monthNeed: need.perDay * 30.44, trips: I.tripStats(allOps, DATA_LAST) };
+}
+
+function renderOutlook() {
+  const o = outlook();
+  $('out-empty').hidden = !!o; $('out-main').hidden = !o;
+  if (!o) { $('out-empty').innerHTML = empty('The outlook starts from a bank balance. Add a checking or savings export to see it.'); return; }
+  const { series, cushion, days } = o, asOf = DATA_LAST;
+  const low = I.lowPoint(series), room = I.roomOn(series, cushion), hard = I.roomOn(series, 0), end = series[series.length - 1];
+  const payday = o.events.find(e => e.amount > 0 && e.ts > asOf);
+  const payDay = payday ? Math.round((payday.ts - asOf) / DAY) : 0, roomAfter = payday ? I.roomOn(series, cushion, payDay) : room;
+  const liquid = o.checking + o.savings - o.card;
+  const months = (v, per) => (per > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '—');
+
+  setKpis('out-kpis', [
+    kpiTile({ label: 'Available now', value: money0(o.start), tone: o.start < 0 ? 'neg' : '',
+      sub: `checking ${money0(o.checking)}${o.countSavings ? ` + savings ${money0(o.savings)}` : ''}${o.card > 0.004 ? ` − card ${money0(o.card)}` : ''}` }),
+    kpiTile({ label: 'Room for a big spend', value: money0(room), tone: room > 0 ? 'pos' : 'neg', sub: `keeps ${money0(cushion)} through ${shortDate(end.ts)}` }),
+    kpiTile({ label: 'Lowest point', value: money0(low.bal), tone: low.bal < 0 ? 'neg' : '', sub: low.day ? `on ${shortDate(low.ts)}, in ${low.day} days` : 'today; it rises from here' }),
+    kpiTile({ label: 'Runway', value: `${months(liquid, o.monthAll)}<small> months</small>`, sub: `of usual spending, from ${money0(liquid)}` }),
+  ]);
+
+  // The forecast, with the amount being tried taken off from its day on.
+  const tryDay = outTry.date ? Math.max(0, Math.min(days, Math.round((A.localTs(outTry.date) - asOf) / DAY))) : 0;
+  const tried = outTry.amt > 0 ? series.map((p, i) => (i >= tryDay ? A.round2(p.bal - outTry.amt) : p.bal)) : null;
+  document.querySelectorAll('#out-days button').forEach(b => b.classList.toggle('active', +b.dataset.days === days));
+  $('out-chart-meta').textContent = `from ${shortDate(asOf)}`;
+  chart('out-chart', {
+    type: 'line',
+    data: { labels: series.map(p => shortDate(p.ts)), datasets: [
+      { label: 'Forecast', data: series.map(p => p.bal), borderColor: C.lead, backgroundColor: 'rgba(57,135,229,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: !tried, stepped: true },
+      ...(tried ? [{ label: `With ${money0(outTry.amt)} spent`, data: tried, borderColor: C.out, backgroundColor: 'rgba(217,89,38,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true }] : []),
+      ...(cushion > 0 ? [{ label: 'Keep at least', data: series.map(() => cushion), borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 0 }] : []),
+    ] },
+    options: { ...hoverLine,
+      plugins: { crosshair: { on: true }, tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money0(x.parsed.y)}` } } },
+      scales: { x: xPlain({ maxTicksLimit: isPhone() ? 4 : 7 }), y: { ...yMoney, grid: { color: g => (g.tick.value === 0 ? 'rgba(255,107,107,0.6)' : C.grid) } } } },
+  });
+  const nIn = o.events.filter(e => e.amount > 0), nOut = o.events.filter(e => e.amount < 0);
+  $('out-note').textContent = `Assumes ${nOut.length} regular charge${nOut.length === 1 ? '' : 's'} and ${nIn.length} deposit${nIn.length === 1 ? '' : 's'} on their usual dates, plus ${money0(o.rate.perDay)} a day of everyday spending (the last ${o.rate.span} days, without bills or travel). Travel and other one-offs are not in it: what is left over is the room for them.`;
+
+  // Room: today, after the next payday, and with nothing kept back.
+  const t = o.trips, cover = t.typical > 0 ? Math.floor(room / t.typical) : 0;
+  $('out-room').innerHTML = `
+    <div class="out-big ${room > 0 ? 'pos' : 'neg'}">${money0(room)}</div>
+    <p class="out-say">${room > 0
+      ? `can go today and the balance still stays above ${money0(cushion)} for the next ${days} days.`
+      : low.bal < 0 ? `The forecast already goes below zero on ${shortDate(low.ts)} without a big spend.` : `Nothing spare: the forecast already dips to ${money0(low.bal)} on ${shortDate(low.ts)}, under the ${money0(cushion)} you keep.`}</p>
+    ${payday && roomAfter - room > 1 ? `<div class="sum-row"><span>From ${shortDate(payday.ts)}, after ${esc(clip(payday.name, 22))}</span><b>${money0(roomAfter)}</b></div>` : ''}
+    <div class="sum-row"><span>Hard limit, keeping nothing back</span><b>${money0(hard)}</b></div>
+    ${!o.countSavings && o.savings > 0 ? `<div class="sum-row"><span>Savings, not counted</span><b>${money0(o.savings)}</b></div>` : ''}
+    ${t.count ? `<div class="sum-row"><span>Your typical trip</span><b>${money0(t.typical)}</b></div>
+    <p class="out-say dim">${t.count} trip${t.count === 1 ? '' : 's'} in the last 12 months, about ${money0(t.perMonth)} a month, the largest ${money0(t.largest)}. ${cover >= 1 ? `The room covers ${cover >= 4 ? 'four or more' : cover === 1 ? 'one' : cover} typical trip${cover === 1 ? '' : 's'}.` : room > 0 ? 'The room is less than a typical trip.' : ''}</p>` : ''}`;
+
+  const amtEl = $('out-amt'), dateEl = $('out-date');
+  dateEl.min = isoLocal(asOf); dateEl.max = isoLocal(end.ts);
+  if (!outTry.date || outTry.date < dateEl.min || outTry.date > dateEl.max) outTry.date = dateEl.min;
+  if (document.activeElement !== dateEl) dateEl.value = outTry.date;
+  if (document.activeElement !== amtEl) amtEl.value = outTry.amt || '';
+  if (tried) {
+    const lowT = I.lowPoint(series.map((p, i) => ({ ...p, bal: tried[i] })), tryDay), when = `${money0(outTry.amt)} on ${shortDate(series[tryDay].ts)}`;
+    $('out-verdict').className = 'out-verdict ' + (lowT.bal < 0 ? 'bad' : lowT.bal < cushion ? 'near' : 'ok');
+    $('out-verdict').textContent = lowT.bal < 0 ? `${when} takes the balance below zero: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
+      : lowT.bal < cushion ? `${when} stays positive but dips under what you keep: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
+      : `${when} is fine: the lowest it gets after is ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`;
+  } else { $('out-verdict').className = 'out-verdict'; $('out-verdict').textContent = 'Type an amount to see it on the forecast.'; }
+  const cEl = $('out-cushion');
+  if (document.activeElement !== cEl) cEl.value = cushion;
+  $('out-savings').checked = o.countSavings;
+  $('out-savings').closest('label').hidden = !(o.savings > 0);
+
+  const shown = o.events.slice(0, 14);
+  $('out-events-meta').textContent = o.events.length ? `${o.events.length} in ${days} days · net ${signed(o.events.reduce((s, e) => s + e.amount, 0))}` : '';
+  $('out-events').innerHTML = shown.length ? shown.map(e => `<div class="up-row${e.idx >= 0 ? ' link' : ''}"${e.idx >= 0 ? ` data-stream="${e.idx}"` : ''}>
+      <span class="up-date">${shortDate(e.ts)}</span>
+      <span class="up-name">${esc(e.name)}</span>
+      <span class="amt ${e.amount > 0 ? 'pos' : ''}">${e.amount > 0 ? '+' : '−'}$${fmt(e.amount)}</span>
+    </div>`).join('') + (o.events.length > shown.length ? `<div class="list-note">and ${o.events.length - shown.length} more later on</div>` : '')
+    : empty('No regular bills or deposits detected yet.');
+
+  $('out-runway').innerHTML = `
+    <div class="sum-row"><span>Checking + savings − card</span><b>${money0(liquid)}</b></div>
+    <div class="sum-row"><span>Usual spending a month</span><b>${money0(o.monthAll)}</b></div>
+    <div class="sum-row"><span>Essentials a month</span><b>${money0(o.monthNeed)}</b></div>
+    <div class="sum-row total"><span>At usual spending</span><span>${months(liquid, o.monthAll)} months</span></div>
+    <div class="sum-row total"><span>Essentials only</span><span>${months(liquid, o.monthNeed)} months</span></div>
+    <p class="out-say dim">Essentials are housing, utilities, insurance, groceries, health and transportation. Based on the last ${o.rate.span} days.</p>`;
+}
+async function saveOutlook(patch) {
+  state.settings.outlook = { ...outSaved(), ...patch };
+  await commit();
+  renderActive();
+}
+$('out-days').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) saveOutlook({ days: +b.dataset.days }); });
+$('out-savings').addEventListener('change', ev => saveOutlook({ savings: ev.target.checked }));
+$('out-cushion').addEventListener('change', ev => { const v = parseFloat(ev.target.value); saveOutlook({ cushion: v >= 0 ? A.round2(v) : null }); });
+$('out-amt').addEventListener('input', ev => { outTry.amt = Math.max(0, parseFloat(ev.target.value) || 0); renderOutlook(); });
+$('out-date').addEventListener('change', ev => { outTry.date = ev.target.value; renderOutlook(); });
 
 const streamOverlay = $('stream-overlay');
 document.addEventListener('click', ev => {

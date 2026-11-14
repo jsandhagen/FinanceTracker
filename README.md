@@ -26,6 +26,12 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   **Money out:** Spending (categories, trend, a daily heatmap, merchants, weekdays) with Budgets
   under it, and Recurring (detected bills and paychecks with their next expected date).
   **Records:** the Transactions ledger (search, sort, filter, export to CSV) and Accounts.
+- **Outlook: where the balance is heading, and the room for a big spend.** Checking less what is
+  owed on the card, carried 30, 60 or 90 days forward: detected bills, paychecks and regular
+  transfers on their dates, plus everyday spending at its recent rate. Travel is left out of that
+  rate, so **Room for a big spend** is what a trip (or any one-off) can cost while the balance
+  stays above the amount you choose to keep. Try an amount and a date to see it on the forecast.
+  Runway shows how many months your money covers at usual spending and on essentials alone.
 - **Income by source.** Every deposit that counts as income is grouped by who paid it, and each
   source has a type: Salary, Side income, Reimbursements (Venmo and the like: people paying you
   back), Interest or Other. Types are guessed (your main paycheck and its employer are Salary,

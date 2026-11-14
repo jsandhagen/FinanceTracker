@@ -517,6 +517,25 @@ tr.lapsed td { color: var(--ink3); }
 #cp-summary { margin-top: 1rem; width: 100%; max-width: 42rem; margin-left: auto; }
 .sum-row.total { border-top: 1px solid var(--line-strong); color: var(--ink); font-weight: 600; font-size: 1.45rem; padding-top: 0.9rem; margin-top: 0.4rem; }
 
+/* ── Outlook ── */
+.out-big { font-size: 3.2rem; font-weight: 500; line-height: 1.15; letter-spacing: -0.035em; }
+.out-say { margin: 0.4rem 0 1rem; color: var(--ink2); font-size: 1.3rem; }
+.out-say.dim { color: var(--ink3); margin-top: 0.6rem; }
+.out-try, .out-set { margin-top: 1.4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.out-try label:not(.check), .out-set label:not(.check) { display: block; margin-bottom: 0.6rem; color: var(--ink2); font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.out-try-row, .out-set { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+.out-set label:not(.check) { flex: 1 1 100%; margin-bottom: 0; }
+.out-try-row .input-affix { flex: 1 1 10rem; }
+.out-try-row .input-affix input { flex: 1; width: auto; min-width: 0; }
+.out-try-row input[type=date] { flex: 1 1 13rem; min-width: 0; }
+.out-verdict { margin-top: 1rem; color: var(--ink3); font-size: 1.3rem; }
+.out-verdict.ok { color: var(--pos); } .out-verdict.near { color: var(--warn); } .out-verdict.bad { color: var(--neg); }
+#out-days { margin-left: 1rem; }
+#out-days button { min-width: 0; padding: 0 0.9rem; height: calc(var(--tap) - 0.6rem); }
+#out-chart-meta { margin-left: auto; }
+#out-note { margin-top: 1.2rem; }
+#out-events .up-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* ── Spending ── */
 .hm-scroll { overflow-x: auto; padding-bottom: 0.4rem; }
 .hm-label { fill: var(--ink3); font-size: 1.1rem; }

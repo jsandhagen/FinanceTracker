@@ -103,3 +103,43 @@ assert.ok(sig.some(x => /SPOTIFY/.test(x.title) && /went up/.test(x.title)), 'pr
 assert.ok(sig.some(x => x.cat === 'Fees'), 'fees');
 assert.ok(sig.some(x => /Kept \d+% of income/.test(x.title)), 'savings rate');
 console.log('insights tests passed');
+
+// Outlook: the forecast is the starting balance, each expected event on its day,
+// and everyday spending; the room for a one-off is the low point less the cushion.
+{
+  const day0 = new Date(2026, 5, 20).getTime(), at = n => { const d = new Date(day0); d.setDate(d.getDate() + n); return d.getTime(); };
+  const sched = [
+    { active: true, amount: 1000, interval: 14, next: at(5), idx: 0, s: { direction: 'income', merchant: 'PAY' } },
+    { active: true, amount: 1200, interval: 30, next: at(11), idx: 1, s: { direction: 'expense', merchant: 'RENT' } },
+    { active: false, amount: 50, interval: 30, next: at(2), idx: 2, s: { direction: 'expense', merchant: 'GONE' } },
+  ];
+  const ev = I.expected(sched, day0, 60);
+  assert.deepEqual(ev.filter(e => e.name === 'PAY').map(e => Math.round((e.ts - day0) / I.DAY)), [5, 19, 33, 47]);
+  assert.deepEqual(ev.filter(e => e.name === 'RENT').map(e => new Date(e.ts).getDate()), [1, 1], 'a monthly bill keeps its day of the month');
+  assert.ok(!ev.some(e => e.name === 'GONE'), 'lapsed streams are not expected');
+  const f = I.forecast({ start: 1000, asOf: day0, events: ev, perDay: 20, days: 60 });
+  assert.equal(f.length, 61);
+  assert.equal(f[0].bal, 1000);
+  assert.equal(f[4].bal, 920);
+  assert.equal(f[5].bal, 1900);
+  close(f[60].bal, 1000 + 4000 - 2400 - 60 * 20, 'forecast end');
+  const low = I.lowPoint(f);
+  assert.equal(low.day, 18); assert.equal(low.bal, 440);
+  assert.equal(I.roomOn(f, 0), 440);
+  assert.equal(I.roomOn(f, 100), 340);
+  assert.equal(I.roomOn(f, 500), 0, 'no room once the low point is under the cushion');
+  assert.equal(I.roomOn(f, 0, 19), I.lowPoint(f, 19).bal);
+  assert.ok(I.roomOn(f, 0, 33) >= I.roomOn(f, 0), 'waiting never leaves less room');
+  // Something already due lands on the first day.
+  assert.equal(I.forecast({ start: 0, asOf: day0, events: [{ ts: day0, amount: -30 }], perDay: 0, days: 2 })[1].bal, -30);
+}
+{
+  const asOf = txns[0].ts;
+  const all = I.spendRate(ops, asOf, { days: 90 }), noTravel = I.spendRate(ops, asOf, { days: 90, skip: t => t.category !== 'Groceries' });
+  assert.ok(all.perDay > noTravel.perDay && noTravel.perDay > 0 && all.span === 90);
+  const day = I.DAY, mk = (d, amount, merchant = 'DELTA', category = 'Travel') => ({ ts: d * day, amount, merchant, category, account: 'Card', date_fmt: String(d) });
+  const tr = I.trips([mk(1, -400), mk(3, -250, 'HOTEL'), mk(40, -90, 'TRAIN'), mk(60, -300), mk(61, 50), mk(2, -80, 'CAFE', 'Dining')]);
+  assert.deepEqual(tr.map(x => [x.total, x.count]), [[650, 2], [300, 1]], 'charges close together are one trip; small ones are left out');
+  const dup = I.duplicates([mk(1, -45, 'SHOP'), mk(2, -45, 'SHOP'), mk(5, -45, 'OTHER'), mk(30, -45, 'OTHER'), mk(1, -5, 'CAFE'), mk(1, -5, 'CAFE')]);
+  assert.deepEqual(dup.map(t => t.merchant), ['SHOP']);
+}

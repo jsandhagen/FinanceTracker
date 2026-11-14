@@ -27,6 +27,7 @@
   <defs>
     <g id="i-overview" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></g>
     <g id="i-cashflow" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h4c3 0 3 8 6 8h2M2 12h4c3 0 3-8 6-8h2"/></g>
+    <g id="i-outlook" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 12l3.5-4 3 2"/><path d="M8.5 10L14 4" stroke-dasharray="1.5 2.5"/><path d="M11 4h3v3"/></g>
     <g id="i-filter" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 4h12M4.5 8h7M7 12h2"/></g>
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
@@ -87,16 +88,17 @@
     <nav class="nav-list" id="nav-list">
       <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
       <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
+      <button class="nav-item" data-view="outlook" data-rail-tip="Outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span><kbd>3</kbd></button>
       <div class="nav-group">Money in</div>
-      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>3</kbd></button>
+      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>4</kbd></button>
       <button class="nav-item nav-sub" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
       <div class="nav-group">Money out</div>
-      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>4</kbd></button>
+      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>5</kbd></button>
       <button class="nav-item nav-sub" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
-      <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>5</kbd></button>
+      <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>6</kbd></button>
       <div class="nav-group">Records</div>
-      <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>6</kbd></button>
-      <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>7</kbd></button>
+      <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>7</kbd></button>
+      <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>8</kbd></button>
     </nav>
     <div class="nav-section">
       <div class="nav-label">Accounts</div>
@@ -217,6 +219,51 @@
               <div id="cp-summary"></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- Outlook: where the balance is heading, and what that leaves for a big spend -->
+      <section class="view" data-view="outlook" hidden>
+        <div id="out-empty" hidden></div>
+        <div id="out-main">
+        <div class="kpi-row" id="out-kpis"></div>
+        <div class="grid">
+          <div class="panel c8">
+            <div class="panel-head"><span class="panel-title">Balance forecast</span><span class="panel-meta" id="out-chart-meta"></span>
+              <div class="seg" id="out-days"><button data-days="30">30d</button><button data-days="60">60d</button><button data-days="90">90d</button></div></div>
+            <div class="panel-body">
+              <div class="chart-box h300"><canvas id="out-chart"></canvas></div>
+              <p class="inc-note" id="out-note"></p>
+            </div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Room for a big spend</span><span class="panel-meta">Travel, or anything else</span></div>
+            <div class="panel-body">
+              <div class="out-room" id="out-room"></div>
+              <div class="out-try">
+                <label for="out-amt">Try an amount</label>
+                <div class="out-try-row">
+                  <div class="input-affix"><span>$</span><input id="out-amt" type="number" inputmode="decimal" min="0" step="50" placeholder="0" /></div>
+                  <input id="out-date" type="date" aria-label="Date of the spend" />
+                </div>
+                <div class="out-verdict" id="out-verdict"></div>
+              </div>
+              <div class="out-set">
+                <label for="out-cushion">Keep at least</label>
+                <div class="input-affix"><span>$</span><input id="out-cushion" type="number" inputmode="decimal" min="0" step="100" /></div>
+                <label class="check"><input type="checkbox" id="out-savings" /> Count savings</label>
+              </div>
+            </div>
+          </div>
+          <div class="panel c8">
+            <div class="panel-head"><span class="panel-title">Expected</span><span class="panel-meta" id="out-events-meta"></span></div>
+            <div class="panel-body flush" id="out-events"></div>
+          </div>
+          <div class="panel c4">
+            <div class="panel-head"><span class="panel-title">Runway</span><span class="panel-meta">If income stopped</span></div>
+            <div class="panel-body" id="out-runway"></div>
+          </div>
+        </div>
         </div>
       </section>
 
@@ -483,6 +530,7 @@
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="more-title">
     <div class="sheet-head"><h2 id="more-title">More</h2><button class="icon-btn" id="more-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
     <div class="more-list" id="more-list">
+      <button class="nav-item" data-view="outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span></button>
       <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
       <button class="nav-item" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
       <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>

@@ -239,6 +239,8 @@ export function signals({ ops, priorOps, hasPrior, streams, asOf, money }) {
   odd.sort((a, b) => a.t.amount - b.t.amount);
   for (const o of odd.slice(0, 2)) out.push({ tone: 'info', title: `Unusual charge at ${o.m}`, detail: `${money(-o.t.amount)} on ${o.t.date_fmt}, typically ${money(o.med)}.`, search: o.m });
 
+  for (const t of duplicates(ops).slice(0, 2)) out.push({ tone: 'warn', title: `Possible duplicate charge at ${t.merchant}`, detail: `${money(-t.amount)} twice within two days, the second on ${t.date_fmt}.`, search: t.merchant });
+
   const spendTxns = ops.filter(t => t.amount < 0);
   if (spendTxns.length) {
     const big = spendTxns.reduce((a, b) => (b.amount < a.amount ? b : a));
@@ -257,4 +259,103 @@ export function signals({ ops, priorOps, hasPrior, streams, asOf, money }) {
   if (other.length >= 3) out.push({ tone: 'info', title: `${other.length} uncategorized transactions`, detail: `${money(sum(other, t => Math.abs(t.amount)))} sits in Other. Tap a category tag to file it.`, cat: 'Other' });
 
   return out;
+}
+
+// ── Outlook: where the balance is heading, and how much room that leaves ─────
+
+const addDay = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };
+const addMonth = (ms, n) => {
+  const d = new Date(ms), day = d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth() + n);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d.getTime();
+};
+const dayIndex = (ts, from) => Math.round((ts - from) / DAY);
+
+// Spending that keeps a household running whatever else is cut.
+export const ESSENTIAL = new Set(['Housing', 'Utilities & Bills', 'Insurance', 'Groceries', 'Health', 'Transportation']);
+
+// Spending per day over the last `days` of data, net of refunds. `skip` leaves
+// transactions out: the outlook drops detected bills (they are dated events of
+// their own) and travel (it comes in trips, not days).
+export function spendRate(ops, asOf, { days = 90, skip = () => false } = {}) {
+  const first = ops.reduce((m, t) => Math.min(m, t.ts), asOf);
+  const span = Math.max(1, Math.min(days, dayIndex(asOf, first) + 1));
+  const from = addDay(asOf, -(span - 1));
+  const total = sum(ops.filter(t => t.ts >= from && t.ts < asOf + DAY && !skip(t)), spent);
+  return { perDay: Math.max(0, total) / span, span };
+}
+
+// Every time an active stream is expected within `days` after asOf. A monthly
+// bill keeps its day of the month; other cadences step by their interval.
+export function expected(sched, asOf, days) {
+  const end = addDay(asOf, days), out = [];
+  for (const x of sched) {
+    if (!x.active || !(x.amount > 0)) continue;
+    const monthly = x.interval >= 27 && x.interval <= 32;
+    for (let n = 0, ts = x.next; ts <= end && n < 400; n++, ts = monthly ? addMonth(x.next, n) : addDay(x.next, n * x.interval)) {
+      out.push({ ts, amount: x.s.direction === 'income' ? x.amount : -x.amount, name: x.s.merchant, idx: x.idx });
+    }
+  }
+  return out.sort((a, b) => a.ts - b.ts);
+}
+
+// The balance for each of the next `days` days: `start` on the last day of
+// data, then each expected event on its day and `perDay` of everyday spending.
+// Anything already due lands on the first day.
+export function forecast({ start, asOf, events, perDay, days }) {
+  const delta = new Array(days + 1).fill(0);
+  for (const e of events) {
+    const i = Math.max(1, dayIndex(e.ts, asOf));
+    if (i <= days) delta[i] += e.amount;
+  }
+  const out = [{ ts: asOf, bal: round2(start) }];
+  let bal = start;
+  for (let i = 1; i <= days; i++) {
+    bal += delta[i] - perDay;
+    out.push({ ts: addDay(asOf, i), bal: round2(bal) });
+  }
+  return out;
+}
+
+// The lowest balance from `day` onward. Money spent on that day comes off every
+// later balance, so this less the cushion is what can be spent then.
+export function lowPoint(series, day = 0) {
+  let low = null;
+  for (let i = Math.min(day, series.length - 1); i < series.length; i++) if (!low || series[i].bal < low.bal) low = { ...series[i], day: i };
+  return low;
+}
+export const roomOn = (series, cushion, day = 0) => Math.max(0, round2(lowPoint(series, day).bal - cushion));
+
+// Travel spending gathered into trips: charges no more than `gap` days apart
+// are one trip. Small totals (a lone train ticket) are left out.
+export function trips(ops, { gap = 5, min = 150 } = {}) {
+  const list = ops.filter(t => t.category === 'Travel' && spent(t)).sort((a, b) => a.ts - b.ts);
+  const out = [];
+  for (const t of list) {
+    const cur = out[out.length - 1];
+    if (cur && t.ts - cur.end <= gap * DAY) { cur.end = t.ts; cur.total += spent(t); cur.count++; }
+    else out.push({ start: t.ts, end: t.ts, total: spent(t), count: 1 });
+  }
+  return out.filter(x => x.total >= min).map(x => ({ ...x, total: round2(x.total) }));
+}
+export function tripStats(ops, asOf) {
+  const year = trips(ops).filter(x => x.end > asOf - 365 * DAY);
+  const first = ops.reduce((m, t) => Math.min(m, t.ts), asOf);
+  const months = Math.max(1, Math.min(12, (asOf - first) / DAY / 30.44));
+  return { count: year.length, typical: round2(median(year.map(x => x.total))), perMonth: round2(sum(year, x => x.total) / months), largest: Math.max(0, ...year.map(x => x.total)) };
+}
+
+// The same amount at the same merchant twice within two days, where that
+// merchant does not usually charge that amount: possibly charged twice.
+export function duplicates(ops, { min = 20 } = {}) {
+  const by = new Map();
+  for (const t of ops) if (t.amount <= -min && !t.refund) { const k = t.merchant + '|' + t.account + '|' + t.amount; if (!by.has(k)) by.set(k, []); by.get(k).push(t); }
+  const out = [];
+  for (const list of by.values()) {
+    if (list.length < 2 || list.length > 3) continue;
+    list.sort((a, b) => a.ts - b.ts);
+    for (let i = 1; i < list.length; i++) if (list[i].ts - list[i - 1].ts <= 2 * DAY) { out.push(list[i]); break; }
+  }
+  return out.sort((a, b) => a.amount - b.amount);
 }
