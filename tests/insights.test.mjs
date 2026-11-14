@@ -138,8 +138,30 @@ console.log('insights tests passed');
   const all = I.spendRate(ops, asOf, { days: 90 }), noTravel = I.spendRate(ops, asOf, { days: 90, skip: t => t.category !== 'Groceries' });
   assert.ok(all.perDay > noTravel.perDay && noTravel.perDay > 0 && all.span === 90);
   const day = I.DAY, mk = (d, amount, merchant = 'DELTA', category = 'Travel') => ({ ts: d * day, amount, merchant, category, account: 'Card', date_fmt: String(d) });
-  const tr = I.trips([mk(1, -400), mk(3, -250, 'HOTEL'), mk(40, -90, 'TRAIN'), mk(60, -300), mk(61, 50), mk(2, -80, 'CAFE', 'Dining')]);
-  assert.deepEqual(tr.map(x => [x.total, x.count]), [[650, 2], [300, 1]], 'charges close together are one trip; small ones are left out');
+  // Trips: one a month, dated by the stay; what was paid ahead goes to the trip it was for.
+  const d = (m, dd) => new Date(2026, m - 1, dd).getTime();
+  const tv = (ts, amount, description, raw_category = '') => ({ ts, amount, description, raw_category, merchant: description, category: 'Travel' });
+  const travel = [
+    tv(d(1, 5), -380, 'DELTA AIR LINES', 'Airfare'),          // paid in January for March
+    tv(d(2, 10), -290, 'UNITED AIRLINES', 'Airfare'),         // paid in February for February
+    tv(d(2, 20), -410, 'HILTON GARDEN INN', 'Lodging'),
+    tv(d(2, 21), -35, 'NATIONAL PARK ENTRY'),
+    tv(d(3, 1), -120, 'HERTZ', 'Car Rental'),                 // prepaid
+    tv(d(3, 14), -260, 'MARRIOTT DOWNTOWN', 'Lodging'),
+    tv(d(3, 16), -240, 'MARRIOTT DOWNTOWN', 'Lodging'),
+    tv(d(3, 28), -180, 'HOLIDAY INN', 'Lodging'),             // a second stay the same month: still March
+    tv(d(4, 2), -85, 'GLOBAL ENTRY'),                         // not a trip
+    tv(d(4, 10), -450, 'SOUTHWEST AIR', 'Airfare'),           // no stay with it: its own trip
+    tv(d(6, 12), -520, 'AIRBNB', 'Lodging'),                  // paid ahead, nothing stayed yet
+    tv(d(6, 14), -310, 'JETBLUE', 'Airfare'),
+    { ts: d(3, 15), amount: -60, description: 'CAFE', merchant: 'CAFE', category: 'Dining' },
+  ];
+  assert.deepEqual(['DELTA AIR LINES', 'HERTZ', 'AIRBNB', 'HILTON', 'CAFE X', 'GLOBAL ENTRY'].map(x => I.travelKind({ description: x })), ['flight', 'car', 'booked', 'stay', 'other', null]);
+  const tr = I.trips(travel, d(6, 20));
+  assert.deepEqual(tr.map(x => [x.ym, x.total, x.booked]), [['2026-02', 735, false], ['2026-03', 1180, false], ['2026-04', 450, false], ['2026-06', 830, true]]);
+  assert.deepEqual(tr[1].parts, { flight: 380, car: 120, stay: 680, other: 0 });
+  const st = I.tripStats(travel, d(6, 20));
+  assert.deepEqual([st.count, st.typical, st.ahead, st.aheadCount], [3, 735, 830, 1]);
   const dup = I.duplicates([mk(1, -45, 'SHOP'), mk(2, -45, 'SHOP'), mk(5, -45, 'OTHER'), mk(30, -45, 'OTHER'), mk(1, -5, 'CAFE'), mk(1, -5, 'CAFE')]);
   assert.deepEqual(dup.map(t => t.merchant), ['SHOP']);
 }

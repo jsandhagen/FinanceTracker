@@ -327,23 +327,91 @@ export function lowPoint(series, day = 0) {
 }
 export const roomOn = (series, cushion, day = 0) => Math.max(0, round2(lowPoint(series, day).bal - cushion));
 
-// Travel spending gathered into trips: charges no more than `gap` days apart
-// are one trip. Small totals (a lone train ticket) are left out.
-export function trips(ops, { gap = 5, min = 150 } = {}) {
-  const list = ops.filter(t => t.category === 'Travel' && spent(t)).sort((a, b) => a.ts - b.ts);
+// ── Trips ────────────────────────────────────────────────────────────────────
+// Travel charges gathered into trips. A trip is dated by where it was stayed:
+// hotel and on-the-road charges fix its month, and one month is one trip.
+// Flights, rental cars and stays paid through a booking site are often paid
+// weeks ahead, so they are not dated by their own day: each goes to the trip
+// it sits beside, or else to the next trip after it.
+
+const FLIGHT_RE = /air ?lines?|airways|\bair\b|jetblue|allegiant|sun country|amtrak|\bklm\b|lufthansa|united\.com|cot\*?flt|flight/i;
+const CAR_RE = /sixt|enterprise|hertz|\bavis\b|budget (rent|car)|national car|alamo|thrifty|dollar rent|\bturo\b|zipcar|car rental|rent[- ]a[- ]car|cot\*?(car|rnt)/i;
+const BOOKED_RE = /airbnb|vrbo|homeaway|booking\.com|hotels\.com|expedia|priceline|hotwire|kayak|hopper|travelocity|orbitz|agoda|trivago|cap(ital)? ?one travel|c1 travel|cot\*?htl/i;
+const NOT_A_TRIP_RE = /global entry|tsa precheck|lounge/i;
+
+// flight, car and booked (a stay paid through a booking site) can be paid long
+// before the trip; stay and other are paid while away.
+export function travelKind(t) {
+  const d = `${t.description || ''} ${t.merchant || ''}`, raw = String(t.raw_category || '').toLowerCase();
+  if (NOT_A_TRIP_RE.test(d)) return null;
+  if (raw === 'airfare' || FLIGHT_RE.test(d)) return 'flight';
+  if (raw === 'car rental' || CAR_RE.test(d)) return 'car';
+  if (BOOKED_RE.test(d)) return 'booked';
+  if (raw === 'lodging' || /hotel|resort|hostel|\binn\b|suites|marriott|hilton|hyatt|westin|sheraton|wyndham|motel|best western|doubletree|la quinta|ihg/i.test(d)) return 'stay';
+  return 'other';
+}
+
+const AHEAD = 120;   // how long before a trip its flight or car may be paid
+const NEAR = 4;      // days either side of a stay that still count as that trip
+const ymOf = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+// Charges no more than `gap` days apart, as one group.
+function runs(list, gap) {
   const out = [];
-  for (const t of list) {
+  for (const x of list) {
     const cur = out[out.length - 1];
-    if (cur && t.ts - cur.end <= gap * DAY) { cur.end = t.ts; cur.total += spent(t); cur.count++; }
-    else out.push({ start: t.ts, end: t.ts, total: spent(t), count: 1 });
+    if (cur && x.ts - cur.end <= gap * DAY) { cur.end = x.ts; cur.items.push(x); }
+    else out.push({ start: x.ts, end: x.ts, items: [x] });
   }
-  return out.filter(x => x.total >= min).map(x => ({ ...x, total: round2(x.total) }));
+  return out;
+}
+
+// `asOf` is the last day of data: something paid ahead in the two months before
+// it, with no stay yet, is taken as a trip still to come (`booked`).
+export function trips(ops, asOf = Infinity, { min = 150 } = {}) {
+  const list = ops.filter(t => t.category === 'Travel' && spent(t)).map(t => ({ ts: t.ts, v: spent(t), kind: travelKind(t) }))
+    .filter(x => x.kind).sort((a, b) => a.ts - b.ts);
+  const early = k => k === 'flight' || k === 'car' || k === 'booked';
+  const stays = runs(list.filter(x => !early(x.kind)), NEAR);
+  const paid = ['flight', 'car', 'booked'].flatMap(kind => runs(list.filter(x => x.kind === kind), 3).map(r => ({ ...r, kind, used: false })));
+
+  const byMonth = new Map();
+  for (const c of stays) {
+    const items = [...c.items];
+    for (const kind of ['flight', 'car', 'booked']) {
+      const free = paid.filter(r => r.kind === kind && !r.used && r.start <= c.end + NEAR * DAY);
+      // Everything paid beside the stay is part of it; failing that, the last thing paid ahead of it.
+      let mine = free.filter(r => r.end >= c.start - NEAR * DAY);
+      if (!mine.length) mine = free.filter(r => r.start >= c.start - AHEAD * DAY).slice(-1);
+      for (const r of mine) { r.used = true; items.push(...r.items); }
+    }
+    // The month the stay was mostly paid in.
+    const w = new Map();
+    for (const x of c.items) w.set(ymOf(x.ts), (w.get(ymOf(x.ts)) || 0) + x.v);
+    const ym = [...w].sort((a, b) => b[1] - a[1])[0][0];
+    if (!byMonth.has(ym)) byMonth.set(ym, { ym, when: c.end, items: [], stayed: true, booked: false });
+    const trip = byMonth.get(ym);
+    trip.items.push(...items); trip.when = Math.max(trip.when, c.end);
+  }
+  // Paid ahead with no stay found: a trip without a hotel bill (family, a
+  // prepaid rental), or one that has not happened yet.
+  const loose = runs(paid.filter(r => !r.used).flatMap(r => r.items).sort((a, b) => a.ts - b.ts), 14)
+    .map(r => ({ ym: ymOf(r.start), when: r.end, items: r.items, stayed: false, booked: asOf - r.end <= 60 * DAY }));
+
+  return [...byMonth.values(), ...loose].map(tr => {
+    const parts = { flight: 0, car: 0, stay: 0, other: 0 };
+    for (const x of tr.items) parts[x.kind === 'booked' ? 'stay' : x.kind] += x.v;
+    for (const k of Object.keys(parts)) parts[k] = round2(parts[k]);
+    return { ym: tr.ym, when: tr.when, stayed: tr.stayed, booked: tr.booked, count: tr.items.length, parts, total: round2(sum(tr.items, x => x.v)) };
+  }).filter(x => x.total >= min).sort((a, b) => a.when - b.when);
 }
 export function tripStats(ops, asOf) {
-  const year = trips(ops).filter(x => x.end > asOf - 365 * DAY);
+  const year = trips(ops, asOf).filter(x => x.when > asOf - 365 * DAY);
+  const done = year.filter(x => !x.booked), ahead = year.filter(x => x.booked);
   const first = ops.reduce((m, t) => Math.min(m, t.ts), asOf);
   const months = Math.max(1, Math.min(12, (asOf - first) / DAY / 30.44));
-  return { count: year.length, typical: round2(median(year.map(x => x.total))), perMonth: round2(sum(year, x => x.total) / months), largest: Math.max(0, ...year.map(x => x.total)) };
+  const basis = done.length ? done : year;
+  return { list: year, count: done.length, typical: round2(median(basis.map(x => x.total))), perMonth: round2(sum(year, x => x.total) / months),
+    largest: Math.max(0, ...basis.map(x => x.total)), ahead: round2(sum(ahead, x => x.total)), aheadCount: ahead.length };
 }
 
 // The same amount at the same merchant twice within two days, where that

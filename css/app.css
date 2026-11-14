@@ -534,6 +534,8 @@ tr.lapsed td { color: var(--ink3); }
 #out-days button { min-width: 0; padding: 0 0.9rem; height: calc(var(--tap) - 0.6rem); }
 #out-chart-meta { margin-left: auto; }
 #out-note { margin-top: 1.2rem; }
+.trip-parts { display: none; text-transform: none; letter-spacing: 0; }
+#out-trips-note { margin: 0; padding: 1rem 1.6rem; border-top: 1px solid var(--line); max-width: none; }
 #out-events .up-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Spending ── */
@@ -748,6 +750,8 @@ tr.lapsed td { color: var(--ink3); }
   #sp-cats td:first-child { white-space: normal; overflow-wrap: anywhere; padding-left: 2.6rem; text-indent: -1.6rem; }
   #sp-cats .cat-note { display: block; margin-top: 2px; text-indent: 0; text-transform: none; letter-spacing: 0; }
   .hm-scroll { overflow-x: hidden; }
+  .trip-parts { display: block; margin-top: 2px; white-space: normal; }
+  #out-trips td:first-child { white-space: normal; }
   .cp-row { grid-template-columns: 1.6rem 1fr 11rem; }
   .cp-row .bar-track, .cp-pct { display: none; }
   .cp-income-row .filter-label { display: none; }
