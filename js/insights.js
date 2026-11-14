@@ -318,6 +318,19 @@ export function forecast({ start, asOf, events, perDay, days }) {
   return out;
 }
 
+// What has been kept (income less spending) by the end of each day from `from`
+// to `to`, running. Transfers are not in `ops`, so money moved to savings or
+// investments still counts as kept.
+export function keptByDay(ops, from, to) {
+  const n = Math.max(0, dayIndex(to, from)), delta = new Array(n + 1).fill(0);
+  for (const t of ops) { const i = dayIndex(t.ts, from); if (i >= 0 && i <= n) delta[i] += earned(t) - spent(t); }
+  let run = 0;
+  return delta.map((d, i) => ({ ts: addDay(from, i), bal: round2(run += d) }));
+}
+// How much more can be spent in a period before its savings rate falls to
+// `rate`: (income - spending - x) / income = rate.
+export const spendRoom = (income, spending, rate = 0) => round2(income * (1 - rate) - spending);
+
 // The lowest balance from `day` onward. Money spent on that day comes off every
 // later balance, so this less the cushion is what can be spent then.
 export function lowPoint(series, day = 0) {

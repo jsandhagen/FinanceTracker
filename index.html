@@ -222,15 +222,13 @@
         </div>
       </section>
 
-      <!-- Outlook: where the balance is heading, and what that leaves for a big spend -->
+      <!-- Outlook: how much more a period can take before its savings rate turns -->
       <section class="view" data-view="outlook" hidden>
-        <div id="out-empty" hidden></div>
-        <div id="out-main">
         <div class="kpi-row" id="out-kpis"></div>
         <div class="grid">
           <div class="panel c8">
-            <div class="panel-head"><span class="panel-title">Balance forecast</span><span class="panel-meta" id="out-chart-meta"></span>
-              <div class="seg" id="out-days"><button data-days="30">30d</button><button data-days="60">60d</button><button data-days="90">90d</button></div></div>
+            <div class="panel-head"><span class="panel-title">Kept over the period</span><span class="panel-meta" id="out-chart-meta"></span>
+              <div class="seg" id="out-days"><button data-period="month">Month</button><button data-period="90">90d</button><button data-period="year">Year</button></div></div>
             <div class="panel-body">
               <div class="chart-box h300"><canvas id="out-chart"></canvas></div>
               <p class="inc-note" id="out-note"></p>
@@ -249,9 +247,8 @@
                 <div class="out-verdict" id="out-verdict"></div>
               </div>
               <div class="out-set">
-                <label for="out-cushion">Keep at least</label>
-                <div class="input-affix"><span>$</span><input id="out-cushion" type="number" inputmode="decimal" min="0" step="100" placeholder="0" /></div>
-                <label class="check"><input type="checkbox" id="out-savings" /> Count savings</label>
+                <label for="out-rate">Keep the savings rate at least</label>
+                <div class="input-affix"><input id="out-rate" type="number" inputmode="numeric" min="0" max="90" step="5" placeholder="0" /><span class="suffix">%</span></div>
               </div>
             </div>
           </div>
@@ -259,11 +256,10 @@
             <div class="panel-head"><span class="panel-title">Expected</span><span class="panel-meta" id="out-events-meta"></span></div>
             <div class="panel-body flush" id="out-events"></div>
           </div>
-          <div class="panel c4">
+          <div class="panel c4" id="out-runway-card">
             <div class="panel-head"><span class="panel-title">Runway</span><span class="panel-meta">If income stopped</span></div>
             <div class="panel-body" id="out-runway"></div>
           </div>
-        </div>
         </div>
         <div class="grid" id="out-trips-grid">
           <div class="panel c12" id="out-trips-card">

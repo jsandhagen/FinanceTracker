@@ -1316,54 +1316,58 @@ function renderRecurring() {
 }
 
 // ── Outlook ───────────────────────────────────────────────────────────────────
-// The balance carried forward from the last day of data: detected bills and
-// paychecks on their dates, plus everyday spending at its recent rate. Travel
-// is left out of that rate, so what the forecast leaves free is what there is
-// for a trip (or any other large one-off).
+// How much more can be spent in a period before its savings rate turns negative
+// (or falls under a rate you choose). The period is the month, the year, or the
+// next 90 days: what has happened so far is counted as it was, and the rest is
+// forecast from detected bills and paychecks on their dates plus everyday
+// spending at its recent rate. Travel is left out of that rate, so what the
+// period leaves over is the room for a trip (or any other large one-off).
+// Money moved to savings or investments is not spending, so it does not count.
 let outTry = { amt: 0, date: '' };
 const outSaved = () => state.settings.outlook || {};
-// Money that leaves the accounts counted here without being spending: regular
-// investment contributions and loan payments, and transfers to savings when
-// savings is not counted.
-function transferStreams(countSavings) {
-  const cats = new Set(['Investment Transfer', 'Loan Payment', ...(countSavings ? [] : ['Savings Transfer'])]);
-  const out = ALL_TXN.filter(t => t.is_transfer && t.amount < 0 && cats.has(t.category) && !/^credit card|saving/i.test(t.account));
-  return A.findRecurringStreams(out.map(t => ({ ...t, is_transfer: false })))
-    .map(s => ({ s, idx: -1, ...I.schedule(s, DATA_LAST) }));
-}
+const OUT_PERIODS = { month: 'Month', 90: '90 days', year: 'Year' };
 function outlook() {
-  const cfg = outSaved(), countSavings = cfg.savings !== false, days = [30, 60, 90].includes(cfg.days) ? cfg.days : 90;
-  const last = BALANCE[BALANCE.length - 1];
-  if (!last) return null;
-  const savings = [...ACCTS].filter(([a, b]) => /saving/i.test(a) && b != null).reduce((s, [, b]) => s + b, 0);
-  const card = last.cc_outstanding, checking = last.total_bank - savings;
-  const start = checking - card + (countSavings ? savings : 0);
-  const live = SCHED.filter(x => x.active && (countSavings || x.s.category !== 'Interest Income'));
-  const bills = new Set(live.filter(x => x.s.direction === 'expense').map(x => x.s.merchant));
+  const cfg = outSaved(), period = OUT_PERIODS[cfg.period] ? String(cfg.period) : '90', asOf = DATA_LAST;
+  const target = Math.max(0, Math.min(90, Number(cfg.rate) || 0)) / 100;
+  const d = new Date(asOf);
+  const from = period === 'month' ? new Date(d.getFullYear(), d.getMonth(), 1).getTime() : period === 'year' ? new Date(d.getFullYear(), 0, 1).getTime() : null;
+  const to = period === 'month' ? new Date(d.getFullYear(), d.getMonth() + 1, 0).getTime() : period === 'year' ? new Date(d.getFullYear(), 11, 31).getTime() : addDays(asOf, 90);
+  const days = Math.round((to - asOf) / DAY);
   const allOps = ALL_TXN.filter(t => !t.is_transfer);
-  const rate = I.spendRate(allOps, DATA_LAST, { skip: t => t.category === 'Travel' || bills.has(t.merchant) || (t.amount > 0 && !t.refund) });
-  const sched = [...live, ...transferStreams(countSavings)];
-  const events = I.expected(sched, DATA_LAST, days);
+
+  // So far: what the period has already earned and spent, travel and all.
+  const past = from == null ? [] : I.keptByDay(allOps, Math.max(from, dayStart(DATA_MIN)), asOf);
+  const sofar = from == null ? { income: 0, expense: 0 } : I.summarize(allOps.filter(t => t.ts >= from && t.ts <= asOf));
+
+  // Still to come.
+  const live = SCHED.filter(x => x.active);
+  const bills = new Set(live.filter(x => x.s.direction === 'expense').map(x => x.s.merchant));
+  const rate = I.spendRate(allOps, asOf, { skip: t => t.category === 'Travel' || bills.has(t.merchant) || (t.amount > 0 && !t.refund) });
+  const events = I.expected(live, asOf, days);
   // No regular deposit detected (pay that varies, or too little history): income
   // comes in at its recent daily rate instead, so the forecast is not all outgoings.
-  const paid = events.some(e => e.amount > 0);
-  const incRate = paid ? 0 : I.spendRate(allOps.map(t => ({ ...t, amount: -I.earned(t), refund: false })), DATA_LAST, { skip: t => !t.amount || (!countSavings && t.category === 'Interest Income') }).perDay;
-  const series = I.forecast({ start, asOf: DATA_LAST, events, perDay: rate.perDay - incRate, days });
-  const cushion = cfg.cushion > 0 ? cfg.cushion : 0;
-  const flow = {
-    in: events.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0) + incRate * days, inByRate: !paid && incRate > 0,
-    bills: -events.filter(e => e.amount < 0 && e.idx >= 0).reduce((s, e) => s + e.amount, 0),
-    moved: -events.filter(e => e.amount < 0 && e.idx < 0).reduce((s, e) => s + e.amount, 0),
+  const paid = live.some(x => x.s.direction === 'income');
+  const incRate = paid ? 0 : I.spendRate(allOps.map(t => ({ ...t, amount: -I.earned(t), refund: false })), asOf, { skip: t => !t.amount }).perDay;
+  const start = past.length ? past[past.length - 1].bal : 0;
+  const ahead = I.forecast({ start, asOf, events, perDay: rate.perDay - incRate, days });
+  const f = {
+    incSoFar: sofar.income, spentSoFar: sofar.expense, inByRate: !paid && incRate > 0,
+    incAhead: events.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0) + incRate * days,
+    bills: -events.filter(e => e.amount < 0).reduce((s, e) => s + e.amount, 0),
     everyday: rate.perDay * days,
   };
-  flow.free = flow.in - flow.bills - flow.moved - flow.everyday;
-  const all = I.spendRate(allOps, DATA_LAST, { skip: t => t.amount > 0 && !t.refund });
-  const need = I.spendRate(allOps, DATA_LAST, { skip: t => !I.ESSENTIAL.has(t.category) || (t.amount > 0 && !t.refund) });
-  return { days, countSavings, checking, savings, card, start, rate, events, series, cushion, flow,
-    monthAll: all.perDay * 30.44, monthNeed: need.perDay * 30.44, trips: I.tripStats(allOps, DATA_LAST) };
+  f.income = f.incSoFar + f.incAhead; f.spending = f.spentSoFar + f.bills + f.everyday;
+  f.kept = f.income - f.spending; f.rate = f.income > 0 ? f.kept / f.income : null;
+  f.room = I.spendRoom(f.income, f.spending, target);
+
+  const last = BALANCE[BALANCE.length - 1];
+  const all = I.spendRate(allOps, asOf, { skip: t => t.amount > 0 && !t.refund });
+  const need = I.spendRate(allOps, asOf, { skip: t => !I.ESSENTIAL.has(t.category) || (t.amount > 0 && !t.refund) });
+  return { period, target, asOf, from, to, days, pastDays: Math.max(0, past.length - 1), series: [...past.slice(0, -1), ...ahead], events, rate, f,
+    liquid: last ? last.net : null, monthAll: all.perDay * 30.44, monthNeed: need.perDay * 30.44, trips: I.tripStats(allOps, asOf) };
 }
 
-// Trips need only the card's travel charges, so they show with or without a bank balance.
+// Trips need only the card's travel charges.
 function renderTrips() {
   const t = I.tripStats(ALL_TXN.filter(x => !x.is_transfer), DATA_LAST);
   $('out-trips-grid').hidden = !t.list.length;
@@ -1379,109 +1383,98 @@ function renderTrips() {
 
 function renderOutlook() {
   renderTrips();
-  const o = outlook();
-  $('out-empty').hidden = !!o; $('out-main').hidden = !o;
-  if (!o) { $('out-empty').innerHTML = empty('The outlook starts from a bank balance. Add a checking or savings export to see it.'); return; }
-  const { series, cushion, days } = o, asOf = DATA_LAST;
-  // Two limits. `free` is what the period itself leaves over: spend that and
-  // you end no lower than you are today. `cap` is the most that can go today
-  // before the balance would pass below what is kept. The room is the lesser.
-  const low = I.lowPoint(series), cap = I.roomOn(series, cushion), end = series[series.length - 1], f = o.flow;
-  const free = Math.max(0, A.round2(f.free)), room = Math.min(free, cap);
-  const liquid = o.checking + o.savings - o.card;
-  const months = (v, per) => (per > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '—');
+  const o = outlook(), { f, series, days, asOf, target } = o, room = Math.max(0, f.room), end = series[series.length - 1];
+  const span = o.period === 'month' ? new Date(asOf).toLocaleString('en-US', { month: 'long' }) : o.period === 'year' ? String(new Date(asOf).getFullYear()) : 'the next 90 days';
+  const ratePct = r => (r == null ? '—' : `${(r * 100).toFixed(r > -0.1 && r < 0.1 ? 1 : 0)}%`);
+  const floor = target > 0 ? `falls under ${pct(target)}` : 'turns negative';
 
   setKpis('out-kpis', [
-    kpiTile({ label: 'Available now', value: money0(o.start), tone: o.start < 0 ? 'neg' : '',
-      sub: `checking ${money0(o.checking)}${o.countSavings ? ` + savings ${money0(o.savings)}` : ''}${o.card > 0.004 ? ` − card ${money0(o.card)}` : ''}` }),
-    kpiTile({ label: `Free over ${days} days`, value: money0(room), tone: room > 0 ? 'pos' : 'neg', sub: `of ${money0(f.in)} coming in by ${shortDate(end.ts)}` }),
-    kpiTile({ label: 'Lowest point', value: money0(low.bal), tone: low.bal < 0 ? 'neg' : '', sub: low.day ? `on ${shortDate(low.ts)}, in ${low.day} days` : 'today; it rises from here' }),
-    kpiTile({ label: 'Runway', value: `${months(liquid, o.monthAll)}<small> months</small>`, sub: `of usual spending, from ${money0(liquid)}` }),
+    kpiTile({ label: 'Room for a big spend', value: money0(room), tone: room > 0 ? 'pos' : 'neg', sub: `before the savings rate ${floor}` }),
+    kpiTile({ label: 'Savings rate as it stands', value: ratePct(f.rate), tone: f.rate == null ? '' : f.rate < target ? 'neg' : 'pos', sub: `${money0(f.kept)} kept over ${span}` }),
+    kpiTile({ label: 'Coming in', value: money0(f.income), sub: o.from != null ? `${money0(f.incSoFar)} so far, ${money0(f.incAhead)} expected` : `expected by ${shortDate(end.ts)}` }),
+    kpiTile({ label: 'Going out', value: money0(f.spending), sub: o.from != null ? `${money0(f.spentSoFar)} so far, ${money0(f.bills + f.everyday)} expected` : 'bills and everyday spending' }),
   ]);
 
-  // The forecast, with the amount being tried taken off from its day on.
-  const tryDay = outTry.date ? Math.max(0, Math.min(days, Math.round((A.localTs(outTry.date) - asOf) / DAY))) : 0;
+  // What is kept, running through the period; the amount being tried comes off from its day on.
+  const first = o.pastDays, lastDay = series.length - 1;
+  const tryDay = outTry.date ? Math.max(first, Math.min(lastDay, first + Math.round((A.localTs(outTry.date) - asOf) / DAY))) : first;
   const tried = outTry.amt > 0 ? series.map((p, i) => (i >= tryDay ? A.round2(p.bal - outTry.amt) : p.bal)) : null;
-  document.querySelectorAll('#out-days button').forEach(b => b.classList.toggle('active', +b.dataset.days === days));
-  $('out-chart-meta').textContent = `from ${shortDate(asOf)}`;
+  document.querySelectorAll('#out-days button').forEach(b => b.classList.toggle('active', b.dataset.period === o.period));
+  $('out-chart-meta').textContent = `${shortDate(series[0].ts)} → ${shortDate(end.ts)}`;
   chart('out-chart', {
     type: 'line',
     data: { labels: series.map(p => shortDate(p.ts)), datasets: [
-      { label: 'Forecast', data: series.map(p => p.bal), borderColor: C.lead, backgroundColor: 'rgba(57,135,229,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: !tried, stepped: true },
-      ...(tried ? [{ label: `With ${money0(outTry.amt)} spent`, data: tried, borderColor: C.out, backgroundColor: 'rgba(217,89,38,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true }] : []),
-      ...(cushion > 0 ? [{ label: 'Keep at least', data: series.map(() => cushion), borderColor: C.ink3, borderWidth: 1, borderDash: [3, 3], pointRadius: 0, pointHoverRadius: 0 }] : []),
-    ] },
+      { label: 'Kept so far', data: series.map((p, i) => (i <= first ? p.bal : null)), borderColor: C.ink, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, stepped: true },
+      { label: 'Forecast', data: series.map((p, i) => (i >= first ? p.bal : null)), borderColor: C.lead, backgroundColor: 'rgba(57,135,229,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: !tried, stepped: true },
+      ...(tried ? [{ label: `With ${money0(outTry.amt)} spent`, data: tried.map((v, i) => (i >= tryDay ? v : null)), borderColor: C.out, backgroundColor: 'rgba(217,89,38,0.14)', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3, fill: true, stepped: true }] : []),
+    ].filter(ds => ds.label !== 'Kept so far' || first > 0) },
     options: { ...hoverLine,
-      plugins: { crosshair: { on: true }, tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money0(x.parsed.y)}` } } },
+      plugins: { crosshair: { on: true }, tooltip: { filter: x => x.parsed.y != null, callbacks: { label: x => ` ${x.dataset.label}  ${money0(x.parsed.y)}` } } },
       scales: { x: xPlain({ maxTicksLimit: isPhone() ? 4 : 7 }), y: { ...yMoney, grid: { color: g => (g.tick.value === 0 ? 'rgba(255,107,107,0.6)' : C.grid) } } } },
   });
-  const nIn = o.events.filter(e => e.amount > 0), nOut = o.events.filter(e => e.amount < 0);
-  $('out-note').textContent = `Assumes ${nOut.length} regular charge${nOut.length === 1 ? '' : 's'} and ${nIn.length} deposit${nIn.length === 1 ? '' : 's'} on their usual dates, plus ${money0(o.rate.perDay)} a day of everyday spending (the last ${o.rate.span} days, without bills or travel). Travel and other one-offs are not in it: what is left over is the room for them.${o.flow.inByRate ? ' No regular paycheck was detected, so income is spread at its recent daily rate.' : ''}`;
+  const nIn = o.events.filter(e => e.amount > 0).length, nOut = o.events.length - nIn;
+  $('out-note').textContent = `Income less spending, running; under zero the savings rate is negative. ${o.from != null ? `Up to ${shortDate(asOf)} it is what happened. After that it` : 'It'} assumes ${nOut} regular charge${nOut === 1 ? '' : 's'} and ${nIn} deposit${nIn === 1 ? '' : 's'} on their usual dates, plus ${money0(o.rate.perDay)} a day of everyday spending (the last ${o.rate.span} days, without bills or travel). Travel is not forecast: what is left is the room for it. Moving money to savings or investments is not spending.${f.inByRate ? ' No regular paycheck was detected, so income is spread at its recent daily rate.' : ''}`;
 
-  // Room, with its working: what comes in, what is already spoken for, what is left.
+  // The room, with its working.
   const t = o.trips, cover = t.typical > 0 ? Math.floor(room / t.typical) : 0, usual = t.perMonth * days / 30.44;
   const row = (label, v, cls = '') => `<div class="sum-row ${cls}"><span>${label}</span><b>${v}</b></div>`;
   $('out-room').innerHTML = `
     <div class="out-big ${room > 0 ? 'pos' : 'neg'}">${money0(room)}</div>
-    <p class="out-say">${f.free <= 0 ? `Nothing is left over: the next ${days} days cost ${money0(-f.free)} more than they bring in, so a big spend comes out of what you already have.`
-      : cap < free ? `is the most that can go before the balance would pass below ${money0(cushion)}. The next ${days} days leave ${money0(free)} free in all.`
-      : `is what the next ${days} days leave free. Spend that much and you end no lower than you are today.`}</p>
-    ${row(f.inByRate ? 'Coming in, at your recent rate' : 'Coming in', '+' + money0(f.in))}
-    ${row('Regular charges', '−' + money0(f.bills))}
-    ${f.moved > 0.5 ? row(o.countSavings ? 'To investments and loans' : 'To savings, investments, loans', '−' + money0(f.moved)) : ''}
-    ${row('Everyday spending', '−' + money0(f.everyday))}
-    ${row(`Left free by ${shortDate(end.ts)}`, (f.free < 0 ? '−' : '') + money0(Math.abs(f.free)), 'total')}
-    ${row(cushion > 0 ? `Limit, keeping ${money0(cushion)}` : 'Limit before going negative', money0(cap))}
-    ${!o.countSavings && o.savings > 0 ? row('Savings, not counted', money0(o.savings)) : ''}
+    <p class="out-say">${f.income <= 0 ? `No income is recorded or expected for ${span}, so there is no savings rate to keep. Add a checking export to see it.`
+      : f.room > 0 ? `more can be spent in ${span} before its savings rate ${floor}.`
+      : target > 0 && f.kept > 0 ? `${cap(span)} is already under ${pct(target)}: it keeps ${ratePct(f.rate)}. Another ${money0(f.kept)} would take it negative.`
+      : f.kept > 0 ? '' : `${cap(span)} already spends ${money0(-f.kept)} more than it brings in.`}</p>
+    ${o.from != null ? row('Income so far', '+' + money0(f.incSoFar)) + row('Spent so far', '−' + money0(f.spentSoFar)) : ''}
+    ${row(f.inByRate ? 'Income expected, at your recent rate' : 'Income expected', '+' + money0(f.incAhead))}
+    ${row('Regular charges to come', '−' + money0(f.bills))}
+    ${row('Everyday spending to come', '−' + money0(f.everyday))}
+    ${row('Kept', `${f.kept < 0 ? '−' : ''}${money0(Math.abs(f.kept))} · ${ratePct(f.rate)}`, 'total')}
+    ${target > 0 ? row(`Kept at ${pct(target)}`, money0(f.income * target)) : ''}
     ${t.list.length ? `${row('Your typical trip', money0(t.typical))}
-    ${row(`Your usual travel in ${days} days`, money0(usual))}
+    ${days > 0 ? row(`Your usual travel in ${days} days`, money0(usual)) : ''}
     ${t.ahead > 0 ? row('Already paid toward a coming trip', money0(t.ahead)) : ''}
-    <p class="out-say dim">${t.count} trip${t.count === 1 ? '' : 's'} in the last 12 months, the largest ${money0(t.largest)}. ${cover >= 1 ? `What is free covers ${cover >= 6 ? 'six or more' : cover} typical trip${cover === 1 ? '' : 's'}.` : room > 0 ? 'What is free is less than a typical trip.' : ''}</p>` : ''}`;
+    <p class="out-say dim">${t.count} trip${t.count === 1 ? '' : 's'} in the last 12 months, the largest ${money0(t.largest)}. ${cover >= 1 ? `The room covers ${cover >= 6 ? 'six or more' : cover} typical trip${cover === 1 ? '' : 's'}.` : room > 0 ? 'The room is less than a typical trip.' : ''}</p>` : ''}`;
 
   const amtEl = $('out-amt'), dateEl = $('out-date');
   dateEl.min = isoLocal(asOf); dateEl.max = isoLocal(end.ts);
   if (!outTry.date || outTry.date < dateEl.min || outTry.date > dateEl.max) outTry.date = dateEl.min;
   if (document.activeElement !== dateEl) dateEl.value = outTry.date;
   if (document.activeElement !== amtEl) amtEl.value = outTry.amt || '';
-  if (tried) {
-    const lowT = I.lowPoint(series.map((p, i) => ({ ...p, bal: tried[i] })), tryDay), when = `${money0(outTry.amt)} on ${shortDate(series[tryDay].ts)}`;
-    const over = outTry.amt - free;
-    $('out-verdict').className = 'out-verdict ' + (lowT.bal < 0 ? 'bad' : lowT.bal < cushion || over > 0.5 ? 'near' : 'ok');
-    $('out-verdict').textContent = lowT.bal < 0 ? `${when} takes the balance below zero: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
-      : lowT.bal < cushion ? `${when} stays positive but dips under what you keep: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
-      : over > 0.5 ? `${when} can be paid, but it is ${money0(over)} more than the period leaves free: you would end that much lower than today.`
-      : `${when} is covered by what the period leaves free. You still end ${money0(free - outTry.amt)} ahead of today.`;
-  } else { $('out-verdict').className = 'out-verdict'; $('out-verdict').textContent = 'Type an amount to see it on the forecast.'; }
-  const cEl = $('out-cushion');
-  if (document.activeElement !== cEl) cEl.value = cushion || '';
-  $('out-savings').checked = o.countSavings;
-  $('out-savings').closest('label').hidden = !(o.savings > 0);
+  if (tried && f.income > 0) {
+    const kept = f.kept - outTry.amt, r = kept / f.income;
+    $('out-verdict').className = 'out-verdict ' + (r < 0 ? 'bad' : r < target ? 'near' : 'ok');
+    $('out-verdict').textContent = `${money0(outTry.amt)} leaves the savings rate for ${span} at ${ratePct(r)}: ${kept < 0 ? `${money0(-kept)} more spent than earned` : `${money0(kept)} kept`}.${r >= 0 && r < target ? ` That is under the ${pct(target)} you want to keep.` : ''}`;
+  } else { $('out-verdict').className = 'out-verdict'; $('out-verdict').textContent = 'Type an amount to see what it does to the savings rate.'; }
+  const rEl = $('out-rate');
+  if (document.activeElement !== rEl) rEl.value = target ? Math.round(target * 100) : '';
 
   const shown = o.events.slice(0, 14);
-  $('out-events-meta').textContent = o.events.length ? `${o.events.length} in ${days} days · net ${signed(o.events.reduce((s, e) => s + e.amount, 0))}` : '';
-  $('out-events').innerHTML = shown.length ? shown.map(e => `<div class="up-row${e.idx >= 0 ? ' link' : ''}"${e.idx >= 0 ? ` data-stream="${e.idx}"` : ''}>
+  $('out-events-meta').textContent = o.events.length ? `${o.events.length} by ${shortDate(end.ts)} · net ${signed(o.events.reduce((s, e) => s + e.amount, 0))}` : '';
+  $('out-events').innerHTML = shown.length ? shown.map(e => `<div class="up-row link" data-stream="${e.idx}">
       <span class="up-date">${shortDate(e.ts)}</span>
       <span class="up-name">${esc(e.name)}</span>
       <span class="amt ${e.amount > 0 ? 'pos' : ''}">${e.amount > 0 ? '+' : '−'}$${fmt(e.amount)}</span>
     </div>`).join('') + (o.events.length > shown.length ? `<div class="list-note">and ${o.events.length - shown.length} more later on</div>` : '')
-    : empty('No regular bills or deposits detected yet.');
+    : empty(days > 0 ? 'No regular bills or deposits detected yet.' : 'The period ends today: nothing more is expected in it.');
 
-  $('out-runway').innerHTML = `
-    <div class="sum-row"><span>Checking + savings − card</span><b>${money0(liquid)}</b></div>
+  const months = (v, per) => (per > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '—');
+  $('out-runway-card').hidden = o.liquid == null;
+  if (o.liquid != null) $('out-runway').innerHTML = `
+    <div class="sum-row"><span>Checking + savings − card</span><b>${money0(o.liquid)}</b></div>
     <div class="sum-row"><span>Usual spending a month</span><b>${money0(o.monthAll)}</b></div>
     <div class="sum-row"><span>Essentials a month</span><b>${money0(o.monthNeed)}</b></div>
-    <div class="sum-row total"><span>At usual spending</span><span>${months(liquid, o.monthAll)} months</span></div>
-    <div class="sum-row total"><span>Essentials only</span><span>${months(liquid, o.monthNeed)} months</span></div>
+    <div class="sum-row total"><span>At usual spending</span><span>${months(o.liquid, o.monthAll)} months</span></div>
+    <div class="sum-row total"><span>Essentials only</span><span>${months(o.liquid, o.monthNeed)} months</span></div>
     <p class="out-say dim">Essentials are housing, utilities, insurance, groceries, health and transportation. Based on the last ${o.rate.span} days.</p>`;
 }
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 async function saveOutlook(patch) {
   state.settings.outlook = { ...outSaved(), ...patch };
   await commit();
   renderActive();
 }
-$('out-days').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) saveOutlook({ days: +b.dataset.days }); });
-$('out-savings').addEventListener('change', ev => saveOutlook({ savings: ev.target.checked }));
-$('out-cushion').addEventListener('change', ev => { const v = parseFloat(ev.target.value); saveOutlook({ cushion: v > 0 ? A.round2(v) : 0 }); });
+$('out-days').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) { outTry.date = ''; saveOutlook({ period: b.dataset.period }); } });
+$('out-rate').addEventListener('change', ev => { const v = parseFloat(ev.target.value); saveOutlook({ rate: v > 0 ? Math.min(90, Math.round(v)) : 0 }); });
 $('out-amt').addEventListener('input', ev => { outTry.amt = Math.max(0, parseFloat(ev.target.value) || 0); renderOutlook(); });
 $('out-date').addEventListener('change', ev => { outTry.date = ev.target.value; renderOutlook(); });
 

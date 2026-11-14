@@ -177,3 +177,14 @@ console.log('insights tests passed');
   const dup = I.duplicates([mk(1, -45, 'SHOP'), mk(2, -45, 'SHOP'), mk(5, -45, 'OTHER'), mk(30, -45, 'OTHER'), mk(1, -5, 'CAFE'), mk(1, -5, 'CAFE')]);
   assert.deepEqual(dup.map(t => t.merchant), ['SHOP']);
 }
+
+// Room before the savings rate turns: at the room exactly, the rate is the target.
+{
+  assert.equal(I.spendRoom(10000, 6000), 4000);
+  assert.equal(I.spendRoom(10000, 6000, 0.2), 2000);
+  close((10000 - 6000 - I.spendRoom(10000, 6000, 0.2)) / 10000, 0.2, 'rate at the room');
+  assert.ok(I.spendRoom(5000, 6000) < 0);
+  const from = txns[txns.length - 1].ts, to = txns[0].ts, k = I.keptByDay(ops, from, to);
+  close(k[k.length - 1].bal, sum.net, 'kept over all the data is its net');
+  assert.ok(k.every((p, i) => !i || p.ts > k[i - 1].ts));
+}
