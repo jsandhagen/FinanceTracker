@@ -1332,7 +1332,7 @@ function transferStreams(countSavings) {
     .map(s => ({ s, idx: -1, ...I.schedule(s, DATA_LAST) }));
 }
 function outlook() {
-  const cfg = outSaved(), countSavings = !!cfg.savings, days = [30, 60, 90].includes(cfg.days) ? cfg.days : 90;
+  const cfg = outSaved(), countSavings = cfg.savings !== false, days = [30, 60, 90].includes(cfg.days) ? cfg.days : 90;
   const last = BALANCE[BALANCE.length - 1];
   if (!last) return null;
   const savings = [...ACCTS].filter(([a, b]) => /saving/i.test(a) && b != null).reduce((s, [, b]) => s + b, 0);
@@ -1344,12 +1344,22 @@ function outlook() {
   const rate = I.spendRate(allOps, DATA_LAST, { skip: t => t.category === 'Travel' || bills.has(t.merchant) || (t.amount > 0 && !t.refund) });
   const sched = [...live, ...transferStreams(countSavings)];
   const events = I.expected(sched, DATA_LAST, days);
-  const series = I.forecast({ start, asOf: DATA_LAST, events, perDay: rate.perDay, days });
-  const billsMonth = sched.filter(x => x.s.direction === 'expense').reduce((s, x) => s + x.monthly, 0);
-  const cushion = cfg.cushion != null ? cfg.cushion : Math.ceil(billsMonth / 100) * 100;
+  // No regular deposit detected (pay that varies, or too little history): income
+  // comes in at its recent daily rate instead, so the forecast is not all outgoings.
+  const paid = events.some(e => e.amount > 0);
+  const incRate = paid ? 0 : I.spendRate(allOps.map(t => ({ ...t, amount: -I.earned(t), refund: false })), DATA_LAST, { skip: t => !t.amount || (!countSavings && t.category === 'Interest Income') }).perDay;
+  const series = I.forecast({ start, asOf: DATA_LAST, events, perDay: rate.perDay - incRate, days });
+  const cushion = cfg.cushion > 0 ? cfg.cushion : 0;
+  const flow = {
+    in: events.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0) + incRate * days, inByRate: !paid && incRate > 0,
+    bills: -events.filter(e => e.amount < 0 && e.idx >= 0).reduce((s, e) => s + e.amount, 0),
+    moved: -events.filter(e => e.amount < 0 && e.idx < 0).reduce((s, e) => s + e.amount, 0),
+    everyday: rate.perDay * days,
+  };
+  flow.free = flow.in - flow.bills - flow.moved - flow.everyday;
   const all = I.spendRate(allOps, DATA_LAST, { skip: t => t.amount > 0 && !t.refund });
   const need = I.spendRate(allOps, DATA_LAST, { skip: t => !I.ESSENTIAL.has(t.category) || (t.amount > 0 && !t.refund) });
-  return { days, countSavings, checking, savings, card, start, rate, events, series, cushion, cushionSet: cfg.cushion != null, billsMonth,
+  return { days, countSavings, checking, savings, card, start, rate, events, series, cushion, flow,
     monthAll: all.perDay * 30.44, monthNeed: need.perDay * 30.44, trips: I.tripStats(allOps, DATA_LAST) };
 }
 
@@ -1373,16 +1383,18 @@ function renderOutlook() {
   $('out-empty').hidden = !!o; $('out-main').hidden = !o;
   if (!o) { $('out-empty').innerHTML = empty('The outlook starts from a bank balance. Add a checking or savings export to see it.'); return; }
   const { series, cushion, days } = o, asOf = DATA_LAST;
-  const low = I.lowPoint(series), room = I.roomOn(series, cushion), hard = I.roomOn(series, 0), end = series[series.length - 1];
-  const payday = o.events.find(e => e.amount > 0 && e.ts > asOf);
-  const payDay = payday ? Math.round((payday.ts - asOf) / DAY) : 0, roomAfter = payday ? I.roomOn(series, cushion, payDay) : room;
+  // Two limits. `free` is what the period itself leaves over: spend that and
+  // you end no lower than you are today. `cap` is the most that can go today
+  // before the balance would pass below what is kept. The room is the lesser.
+  const low = I.lowPoint(series), cap = I.roomOn(series, cushion), end = series[series.length - 1], f = o.flow;
+  const free = Math.max(0, A.round2(f.free)), room = Math.min(free, cap);
   const liquid = o.checking + o.savings - o.card;
   const months = (v, per) => (per > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '—');
 
   setKpis('out-kpis', [
     kpiTile({ label: 'Available now', value: money0(o.start), tone: o.start < 0 ? 'neg' : '',
       sub: `checking ${money0(o.checking)}${o.countSavings ? ` + savings ${money0(o.savings)}` : ''}${o.card > 0.004 ? ` − card ${money0(o.card)}` : ''}` }),
-    kpiTile({ label: 'Room for a big spend', value: money0(room), tone: room > 0 ? 'pos' : 'neg', sub: `keeps ${money0(cushion)} through ${shortDate(end.ts)}` }),
+    kpiTile({ label: `Free over ${days} days`, value: money0(room), tone: room > 0 ? 'pos' : 'neg', sub: `of ${money0(f.in)} coming in by ${shortDate(end.ts)}` }),
     kpiTile({ label: 'Lowest point', value: money0(low.bal), tone: low.bal < 0 ? 'neg' : '', sub: low.day ? `on ${shortDate(low.ts)}, in ${low.day} days` : 'today; it rises from here' }),
     kpiTile({ label: 'Runway', value: `${months(liquid, o.monthAll)}<small> months</small>`, sub: `of usual spending, from ${money0(liquid)}` }),
   ]);
@@ -1404,21 +1416,27 @@ function renderOutlook() {
       scales: { x: xPlain({ maxTicksLimit: isPhone() ? 4 : 7 }), y: { ...yMoney, grid: { color: g => (g.tick.value === 0 ? 'rgba(255,107,107,0.6)' : C.grid) } } } },
   });
   const nIn = o.events.filter(e => e.amount > 0), nOut = o.events.filter(e => e.amount < 0);
-  $('out-note').textContent = `Assumes ${nOut.length} regular charge${nOut.length === 1 ? '' : 's'} and ${nIn.length} deposit${nIn.length === 1 ? '' : 's'} on their usual dates, plus ${money0(o.rate.perDay)} a day of everyday spending (the last ${o.rate.span} days, without bills or travel). Travel and other one-offs are not in it: what is left over is the room for them.`;
+  $('out-note').textContent = `Assumes ${nOut.length} regular charge${nOut.length === 1 ? '' : 's'} and ${nIn.length} deposit${nIn.length === 1 ? '' : 's'} on their usual dates, plus ${money0(o.rate.perDay)} a day of everyday spending (the last ${o.rate.span} days, without bills or travel). Travel and other one-offs are not in it: what is left over is the room for them.${o.flow.inByRate ? ' No regular paycheck was detected, so income is spread at its recent daily rate.' : ''}`;
 
-  // Room: today, after the next payday, and with nothing kept back.
-  const t = o.trips, cover = t.typical > 0 ? Math.floor(room / t.typical) : 0;
+  // Room, with its working: what comes in, what is already spoken for, what is left.
+  const t = o.trips, cover = t.typical > 0 ? Math.floor(room / t.typical) : 0, usual = t.perMonth * days / 30.44;
+  const row = (label, v, cls = '') => `<div class="sum-row ${cls}"><span>${label}</span><b>${v}</b></div>`;
   $('out-room').innerHTML = `
     <div class="out-big ${room > 0 ? 'pos' : 'neg'}">${money0(room)}</div>
-    <p class="out-say">${room > 0
-      ? `can go today and the balance still stays above ${money0(cushion)} for the next ${days} days.`
-      : low.bal < 0 ? `The forecast already goes below zero on ${shortDate(low.ts)} without a big spend.` : `Nothing spare: the forecast already dips to ${money0(low.bal)} on ${shortDate(low.ts)}, under the ${money0(cushion)} you keep.`}</p>
-    ${payday && roomAfter - room > 1 ? `<div class="sum-row"><span>From ${shortDate(payday.ts)}, after ${esc(clip(payday.name, 22))}</span><b>${money0(roomAfter)}</b></div>` : ''}
-    <div class="sum-row"><span>Hard limit, keeping nothing back</span><b>${money0(hard)}</b></div>
-    ${!o.countSavings && o.savings > 0 ? `<div class="sum-row"><span>Savings, not counted</span><b>${money0(o.savings)}</b></div>` : ''}
-    ${t.list.length ? `<div class="sum-row"><span>Your typical trip</span><b>${money0(t.typical)}</b></div>
-    ${t.ahead > 0 ? `<div class="sum-row"><span>Already paid toward a coming trip</span><b>${money0(t.ahead)}</b></div>` : ''}
-    <p class="out-say dim">${t.count} trip${t.count === 1 ? '' : 's'} in the last 12 months, about ${money0(t.perMonth)} a month, the largest ${money0(t.largest)}. ${cover >= 1 ? `The room covers ${cover >= 4 ? 'four or more' : cover === 1 ? 'one' : cover} typical trip${cover === 1 ? '' : 's'}.` : room > 0 ? 'The room is less than a typical trip.' : ''}</p>` : ''}`;
+    <p class="out-say">${f.free <= 0 ? `Nothing is left over: the next ${days} days cost ${money0(-f.free)} more than they bring in, so a big spend comes out of what you already have.`
+      : cap < free ? `is the most that can go before the balance would pass below ${money0(cushion)}. The next ${days} days leave ${money0(free)} free in all.`
+      : `is what the next ${days} days leave free. Spend that much and you end no lower than you are today.`}</p>
+    ${row(f.inByRate ? 'Coming in, at your recent rate' : 'Coming in', '+' + money0(f.in))}
+    ${row('Regular charges', '−' + money0(f.bills))}
+    ${f.moved > 0.5 ? row(o.countSavings ? 'To investments and loans' : 'To savings, investments, loans', '−' + money0(f.moved)) : ''}
+    ${row('Everyday spending', '−' + money0(f.everyday))}
+    ${row(`Left free by ${shortDate(end.ts)}`, (f.free < 0 ? '−' : '') + money0(Math.abs(f.free)), 'total')}
+    ${row(cushion > 0 ? `Limit, keeping ${money0(cushion)}` : 'Limit before going negative', money0(cap))}
+    ${!o.countSavings && o.savings > 0 ? row('Savings, not counted', money0(o.savings)) : ''}
+    ${t.list.length ? `${row('Your typical trip', money0(t.typical))}
+    ${row(`Your usual travel in ${days} days`, money0(usual))}
+    ${t.ahead > 0 ? row('Already paid toward a coming trip', money0(t.ahead)) : ''}
+    <p class="out-say dim">${t.count} trip${t.count === 1 ? '' : 's'} in the last 12 months, the largest ${money0(t.largest)}. ${cover >= 1 ? `What is free covers ${cover >= 6 ? 'six or more' : cover} typical trip${cover === 1 ? '' : 's'}.` : room > 0 ? 'What is free is less than a typical trip.' : ''}</p>` : ''}`;
 
   const amtEl = $('out-amt'), dateEl = $('out-date');
   dateEl.min = isoLocal(asOf); dateEl.max = isoLocal(end.ts);
@@ -1427,13 +1445,15 @@ function renderOutlook() {
   if (document.activeElement !== amtEl) amtEl.value = outTry.amt || '';
   if (tried) {
     const lowT = I.lowPoint(series.map((p, i) => ({ ...p, bal: tried[i] })), tryDay), when = `${money0(outTry.amt)} on ${shortDate(series[tryDay].ts)}`;
-    $('out-verdict').className = 'out-verdict ' + (lowT.bal < 0 ? 'bad' : lowT.bal < cushion ? 'near' : 'ok');
+    const over = outTry.amt - free;
+    $('out-verdict').className = 'out-verdict ' + (lowT.bal < 0 ? 'bad' : lowT.bal < cushion || over > 0.5 ? 'near' : 'ok');
     $('out-verdict').textContent = lowT.bal < 0 ? `${when} takes the balance below zero: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
       : lowT.bal < cushion ? `${when} stays positive but dips under what you keep: ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`
-      : `${when} is fine: the lowest it gets after is ${money0(lowT.bal)} on ${shortDate(lowT.ts)}.`;
+      : over > 0.5 ? `${when} can be paid, but it is ${money0(over)} more than the period leaves free: you would end that much lower than today.`
+      : `${when} is covered by what the period leaves free. You still end ${money0(free - outTry.amt)} ahead of today.`;
   } else { $('out-verdict').className = 'out-verdict'; $('out-verdict').textContent = 'Type an amount to see it on the forecast.'; }
   const cEl = $('out-cushion');
-  if (document.activeElement !== cEl) cEl.value = cushion;
+  if (document.activeElement !== cEl) cEl.value = cushion || '';
   $('out-savings').checked = o.countSavings;
   $('out-savings').closest('label').hidden = !(o.savings > 0);
 
@@ -1461,7 +1481,7 @@ async function saveOutlook(patch) {
 }
 $('out-days').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) saveOutlook({ days: +b.dataset.days }); });
 $('out-savings').addEventListener('change', ev => saveOutlook({ savings: ev.target.checked }));
-$('out-cushion').addEventListener('change', ev => { const v = parseFloat(ev.target.value); saveOutlook({ cushion: v >= 0 ? A.round2(v) : null }); });
+$('out-cushion').addEventListener('change', ev => { const v = parseFloat(ev.target.value); saveOutlook({ cushion: v > 0 ? A.round2(v) : 0 }); });
 $('out-amt').addEventListener('input', ev => { outTry.amt = Math.max(0, parseFloat(ev.target.value) || 0); renderOutlook(); });
 $('out-date').addEventListener('change', ev => { outTry.date = ev.target.value; renderOutlook(); });
 

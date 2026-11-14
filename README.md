@@ -26,11 +26,14 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   **Money out:** Spending (categories, trend, a daily heatmap, merchants, weekdays) with Budgets
   under it, and Recurring (detected bills and paychecks with their next expected date).
   **Records:** the Transactions ledger (search, sort, filter, export to CSV) and Accounts.
-- **Outlook: where the balance is heading, and the room for a big spend.** Checking less what is
-  owed on the card, carried 30, 60 or 90 days forward: detected bills, paychecks and regular
-  transfers on their dates, plus everyday spending at its recent rate. Travel is left out of that
-  rate, so **Room for a big spend** is what a trip (or any one-off) can cost while the balance
-  stays above the amount you choose to keep. Try an amount and a date to see it on the forecast.
+- **Outlook: where the balance is heading, and the room for a big spend.** Checking and savings,
+  less what is owed on the card, carried 30, 60 or 90 days forward: detected bills, paychecks and
+  regular transfers on their dates, plus everyday spending at its recent rate. Travel is left out
+  of that rate, so **Room for a big spend** is what the period leaves free for a trip (or any
+  one-off): what comes in, less regular charges and everyday spending, shown line by line. Spend
+  that much and you end no lower than you are today; a separate line gives the limit before the
+  balance would go negative (or below an amount you choose to keep). Try an amount and a date to
+  see it on the forecast.
   **Trips** are one a month, dated by what was charged while away: a hotel bill, a park fee, a
   lounge, a rental car settled at the counter. Flights, Airbnb and booking-site stays, and rental
   cars reserved online (they carry a booking reference) are matched to the trip they were paid
