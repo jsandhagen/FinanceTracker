@@ -1353,7 +1353,22 @@ function outlook() {
     monthAll: all.perDay * 30.44, monthNeed: need.perDay * 30.44, trips: I.tripStats(allOps, DATA_LAST) };
 }
 
+// Trips need only the card's travel charges, so they show with or without a bank balance.
+function renderTrips() {
+  const t = I.tripStats(ALL_TXN.filter(x => !x.is_transfer), DATA_LAST);
+  $('out-trips-grid').hidden = !t.list.length;
+  $('out-trips-meta').textContent = t.list.length ? `Last 12 months · ${money0(t.list.reduce((s, x) => s + x.total, 0))}` : '';
+  const part = v => (v > 0.004 ? money0(v) : '<span class="dim">·</span>');
+  $('out-trips').innerHTML = `<thead><tr><th>Month</th><th class="num col-hide-sm">Flights</th><th class="num col-hide-sm">Stay</th><th class="num col-hide-sm">Car</th><th class="num col-hide-sm">Other</th><th class="num">Total</th></tr></thead>
+    <tbody>${[...t.list].reverse().map(x => `<tr>
+      <td>${monthLabel(x.ym, !isPhone())}${x.booked ? ' <span class="tag near">paid ahead</span>' : x.stayed ? '' : ' <span class="tag" title="Nothing was charged while away, so it is dated by when it was paid">by pay date</span>'}
+        <small class="trip-parts dim">${Object.entries({ flights: x.parts.flight, stay: x.parts.stay, car: x.parts.car, other: x.parts.other }).filter(([, v]) => v > 0.004).map(([k, v]) => `${k} ${money0(v)}`).join(' · ')}</small></td>
+      <td class="num col-hide-sm">${part(x.parts.flight)}</td><td class="num col-hide-sm">${part(x.parts.stay)}</td><td class="num col-hide-sm">${part(x.parts.car)}</td><td class="num col-hide-sm">${part(x.parts.other)}</td>
+      <td class="num">${money0(x.total)}</td></tr>`).join('')}</tbody>`;
+}
+
 function renderOutlook() {
+  renderTrips();
   const o = outlook();
   $('out-empty').hidden = !!o; $('out-main').hidden = !o;
   if (!o) { $('out-empty').innerHTML = empty('The outlook starts from a bank balance. Add a checking or savings export to see it.'); return; }
@@ -1430,16 +1445,6 @@ function renderOutlook() {
       <span class="amt ${e.amount > 0 ? 'pos' : ''}">${e.amount > 0 ? '+' : '−'}$${fmt(e.amount)}</span>
     </div>`).join('') + (o.events.length > shown.length ? `<div class="list-note">and ${o.events.length - shown.length} more later on</div>` : '')
     : empty('No regular bills or deposits detected yet.');
-
-  $('out-trips-card').hidden = !t.list.length;
-  $('out-trips-meta').textContent = t.list.length ? `Last 12 months · ${money0(t.list.reduce((s, x) => s + x.total, 0))}` : '';
-  const part = v => (v > 0.004 ? money0(v) : '<span class="dim">·</span>');
-  $('out-trips').innerHTML = `<thead><tr><th>Month</th><th class="num col-hide-sm">Flights</th><th class="num col-hide-sm">Stay</th><th class="num col-hide-sm">Car</th><th class="num col-hide-sm">Other</th><th class="num">Total</th></tr></thead>
-    <tbody>${[...t.list].reverse().map(x => `<tr>
-      <td>${monthLabel(x.ym, !isPhone())}${x.booked ? ' <span class="tag near">paid ahead</span>' : x.stayed ? '' : ' <span class="tag" title="Nothing was charged while away, so it is dated by when it was paid">by pay date</span>'}
-        <small class="trip-parts dim">${Object.entries({ flights: x.parts.flight, stay: x.parts.stay, car: x.parts.car, other: x.parts.other }).filter(([, v]) => v > 0.004).map(([k, v]) => `${k} ${money0(v)}`).join(' · ')}</small></td>
-      <td class="num col-hide-sm">${part(x.parts.flight)}</td><td class="num col-hide-sm">${part(x.parts.stay)}</td><td class="num col-hide-sm">${part(x.parts.car)}</td><td class="num col-hide-sm">${part(x.parts.other)}</td>
-      <td class="num">${money0(x.total)}</td></tr>`).join('')}</tbody>`;
 
   $('out-runway').innerHTML = `
     <div class="sum-row"><span>Checking + savings − card</span><b>${money0(liquid)}</b></div>

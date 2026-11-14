@@ -601,6 +601,7 @@ export function categorize(stored, rules, training, ml = buildCategorizer(rules,
       ord: t.ord || 0,
       is_transfer: isTransfer,
       refund,
+      raw_category: t.raw_category || '',   // the card's or bank's own label, for telling a flight from a stay
     };
   });
   pairCardPayments(out, stored, ruled);

@@ -328,78 +328,118 @@ export function lowPoint(series, day = 0) {
 export const roomOn = (series, cushion, day = 0) => Math.max(0, round2(lowPoint(series, day).bal - cushion));
 
 // ── Trips ────────────────────────────────────────────────────────────────────
-// Travel charges gathered into trips. A trip is dated by where it was stayed:
-// hotel and on-the-road charges fix its month, and one month is one trip.
-// Flights, rental cars and stays paid through a booking site are often paid
-// weeks ahead, so they are not dated by their own day: each goes to the trip
-// it sits beside, or else to the next trip after it.
+// Travel charges gathered into trips, one a month. A trip is dated by what was
+// charged while away: a hotel bill (often only a few dollars of extras), a park
+// fee, an airport lounge, a rental car settled at the counter. Flights, stays
+// paid through Airbnb or a booking site, and a rental car reserved online are
+// often paid weeks ahead, so they are not dated by their own day: each goes to
+// the trip it was paid during, or else to a trip after it.
 
 const FLIGHT_RE = /air ?lines?|airways|\bair\b|jetblue|allegiant|sun country|amtrak|\bklm\b|lufthansa|united\.com|cot\*?flt|flight/i;
 const CAR_RE = /sixt|enterprise|hertz|\bavis\b|budget (rent|car)|national car|alamo|thrifty|dollar rent|\bturo\b|zipcar|car rental|rent[- ]a[- ]car|cot\*?(car|rnt)/i;
 const BOOKED_RE = /airbnb|vrbo|homeaway|booking\.com|hotels\.com|expedia|priceline|hotwire|kayak|hopper|travelocity|orbitz|agoda|trivago|cap(ital)? ?one travel|c1 travel|cot\*?htl/i;
-const NOT_A_TRIP_RE = /global entry|tsa precheck|lounge/i;
+const STAY_RE = /hotel|resort|hostel|lodge|\binn\b|suites|marriott|hilton|hyatt|westin|sheraton|wyndham|motel|best western|doubletree|la quinta|\bihg\b/i;
+const NOT_A_TRIP_RE = /global entry|tsa precheck/i;
+// A booking reference in the description (Sixt AB1CDEFGH, AIRBNB * HM1ABCDEF2):
+// letters and digits together. Every charge that carries it is one booking.
+const CODE_RE = /\b(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{7,}\b/;
+export const bookingCode = t => (CODE_RE.exec(String(t.description || '').toUpperCase()) || [''])[0];
 
-// flight, car and booked (a stay paid through a booking site) can be paid long
-// before the trip; stay and other are paid while away.
+// What a travel charge is. `flight`, `booked` (a stay paid through a booking
+// site) and `car` (a rental reserved online: it carries a booking reference)
+// can be paid long before the trip. `stay`, `counter` (a rental settled at the
+// desk) and `other` are paid while away. The card's own label is used first.
 export function travelKind(t) {
   const d = `${t.description || ''} ${t.merchant || ''}`, raw = String(t.raw_category || '').toLowerCase();
   if (NOT_A_TRIP_RE.test(d)) return null;
+  if (/lounge/i.test(d)) return 'other';
   if (raw === 'airfare' || FLIGHT_RE.test(d)) return 'flight';
-  if (raw === 'car rental' || CAR_RE.test(d)) return 'car';
+  if (raw === 'car rental' || CAR_RE.test(d)) return bookingCode(t) ? 'car' : 'counter';
   if (BOOKED_RE.test(d)) return 'booked';
-  if (raw === 'lodging' || /hotel|resort|hostel|\binn\b|suites|marriott|hilton|hyatt|westin|sheraton|wyndham|motel|best western|doubletree|la quinta|ihg/i.test(d)) return 'stay';
+  if (raw === 'lodging' || STAY_RE.test(d)) return 'stay';
   return 'other';
 }
 
-const AHEAD = 120;   // how long before a trip its flight or car may be paid
-const NEAR = 4;      // days either side of a stay that still count as that trip
+const AHEAD = 120;   // how long before a trip something for it may be paid
+const NEAR = 4;      // days either side of a trip's charges that still count as during it
+const APART = 6;     // charges while away further apart than this are separate stays
 const ymOf = ts => { const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
-// Charges no more than `gap` days apart, as one group.
-function runs(list, gap) {
+const brandOf = x => (/[a-z]+/i.exec(x.name) || [''])[0].toLowerCase();
+// Things no more than `gap` days apart, as one group.
+function runs(list, gap, at = x => x.ts, until = at) {
   const out = [];
   for (const x of list) {
     const cur = out[out.length - 1];
-    if (cur && x.ts - cur.end <= gap * DAY) { cur.end = x.ts; cur.items.push(x); }
-    else out.push({ start: x.ts, end: x.ts, items: [x] });
+    if (cur && at(x) - cur.end <= gap * DAY) { cur.end = Math.max(cur.end, until(x)); cur.items.push(x); }
+    else out.push({ start: at(x), end: until(x), items: [x] });
   }
   return out;
 }
 
 // `asOf` is the last day of data: something paid ahead in the two months before
-// it, with no stay yet, is taken as a trip still to come (`booked`).
+// it, with no trip found for it, is taken as a trip still to come (`booked`).
 export function trips(ops, asOf = Infinity, { min = 150 } = {}) {
-  const list = ops.filter(t => t.category === 'Travel' && spent(t)).map(t => ({ ts: t.ts, v: spent(t), kind: travelKind(t) }))
+  const list = ops.filter(t => t.category === 'Travel' && spent(t))
+    .map(t => ({ ts: t.ts, v: spent(t), kind: travelKind(t), code: bookingCode(t), name: t.description || t.merchant || '' }))
     .filter(x => x.kind).sort((a, b) => a.ts - b.ts);
   const early = k => k === 'flight' || k === 'car' || k === 'booked';
-  const stays = runs(list.filter(x => !early(x.kind)), NEAR);
-  const paid = ['flight', 'car', 'booked'].flatMap(kind => runs(list.filter(x => x.kind === kind), 3).map(r => ({ ...r, kind, used: false })));
+  const stays = runs(list.filter(x => !early(x.kind)), APART).map(c => ({ ...c, got: [] }));
 
+  // What was paid ahead, as bookings: charges sharing a reference are one
+  // booking however far apart; otherwise the same kind within three days.
+  const coded = new Map(), plain = [];
+  for (const x of list.filter(x => early(x.kind))) {
+    if (!x.code) { plain.push(x); continue; }
+    if (!coded.has(x.code)) coded.set(x.code, { kind: x.kind, start: x.ts, end: x.ts, items: [] });
+    const b = coded.get(x.code); b.end = x.ts; b.items.push(x);
+  }
+  const bookings = [...coded.values(), ...['flight', 'car', 'booked'].flatMap(kind => runs(plain.filter(x => x.kind === kind), 3).map(r => ({ ...r, kind })))]
+    .sort((a, b) => a.end - b.end);
+  const give = (b, c) => { b.to = c; c.got.push(b); };
+  const during = (ts, c) => ts >= c.start - NEAR * DAY && ts <= c.end + NEAR * DAY;
+  const has = (c, kinds) => c.items.some(x => kinds.includes(x.kind)) || c.got.some(b => kinds.includes(b.kind));
+
+  // 1. Paid during a trip (its last charge, else its first): part of that trip.
+  for (const b of bookings) { const c = stays.find(c => during(b.end, c)) || stays.find(c => during(b.start, c)); if (c) give(b, c); }
+  const ahead = (b, ok = () => true) => stays.filter(c => c.start >= b.end && c.start - b.end <= AHEAD * DAY && ok(c));
+  // 2. A car reserved online goes to the next trip where that company was paid at the counter.
+  // (A booking charged again a week or more later was settled then: that trip
+  // is over, so it is not looked for further on.)
+  const settled = b => b.end - b.start >= 7 * DAY;
+  for (const b of [...bookings].reverse()) {
+    if (b.to || b.kind !== 'car' || settled(b)) continue;
+    const c = ahead(b, c => !c.got.some(g => g.kind === 'car') && c.items.some(x => x.kind === 'counter' && brandOf(x) === brandOf(b.items[0])))[0];
+    if (c) give(b, c);
+  }
+  // 3. The rest go to the next trip. A flight or car goes to the next one that
+  // has none yet, the latest bought choosing first, so the nearest purchase gets
+  // the nearest trip and one bought earlier still is for the trip after. With
+  // no such trip it is left as a trip of its own.
+  for (const b of [...bookings].reverse()) {
+    if (b.to || settled(b)) continue;
+    const next = ahead(b), kinds = b.kind === 'flight' ? ['flight'] : ['car', 'counter'];
+    const c = b.kind === 'booked' ? next[0] : next.find(c => !has(c, kinds));
+    if (c) give(b, c);
+  }
+
+  // One trip a month: the month most of it was charged in while away.
   const byMonth = new Map();
   for (const c of stays) {
-    const items = [...c.items];
-    for (const kind of ['flight', 'car', 'booked']) {
-      const free = paid.filter(r => r.kind === kind && !r.used && r.start <= c.end + NEAR * DAY);
-      // Everything paid beside the stay is part of it; failing that, the last thing paid ahead of it.
-      let mine = free.filter(r => r.end >= c.start - NEAR * DAY);
-      if (!mine.length) mine = free.filter(r => r.start >= c.start - AHEAD * DAY).slice(-1);
-      for (const r of mine) { r.used = true; items.push(...r.items); }
-    }
-    // The month the stay was mostly paid in.
     const w = new Map();
-    for (const x of c.items) w.set(ymOf(x.ts), (w.get(ymOf(x.ts)) || 0) + x.v);
+    for (const x of [...c.items, ...c.got.flatMap(b => b.items.filter(x => during(x.ts, c)))]) w.set(ymOf(x.ts), (w.get(ymOf(x.ts)) || 0) + x.v);
     const ym = [...w].sort((a, b) => b[1] - a[1])[0][0];
     if (!byMonth.has(ym)) byMonth.set(ym, { ym, when: c.end, items: [], stayed: true, booked: false });
     const trip = byMonth.get(ym);
-    trip.items.push(...items); trip.when = Math.max(trip.when, c.end);
+    trip.items.push(...c.items, ...c.got.flatMap(b => b.items)); trip.when = Math.max(trip.when, c.end);
   }
-  // Paid ahead with no stay found: a trip without a hotel bill (family, a
-  // prepaid rental), or one that has not happened yet.
-  const loose = runs(paid.filter(r => !r.used).flatMap(r => r.items).sort((a, b) => a.ts - b.ts), 14)
-    .map(r => ({ ym: ymOf(r.start), when: r.end, items: r.items, stayed: false, booked: asOf - r.end <= 60 * DAY }));
+  // Paid ahead with no trip found: one with nothing charged while away (family,
+  // everything prepaid), dated by its last payment, or one still to come.
+  const loose = runs(bookings.filter(b => !b.to), 14, b => b.start, b => b.end)
+    .map(r => ({ ym: ymOf(r.end), when: r.end, items: r.items.flatMap(b => b.items), stayed: false, booked: asOf - r.end <= 60 * DAY }));
 
   return [...byMonth.values(), ...loose].map(tr => {
     const parts = { flight: 0, car: 0, stay: 0, other: 0 };
-    for (const x of tr.items) parts[x.kind === 'booked' ? 'stay' : x.kind] += x.v;
+    for (const x of tr.items) parts[x.kind === 'booked' ? 'stay' : x.kind === 'counter' ? 'car' : x.kind] += x.v;
     for (const k of Object.keys(parts)) parts[k] = round2(parts[k]);
     return { ym: tr.ym, when: tr.when, stayed: tr.stayed, booked: tr.booked, count: tr.items.length, parts, total: round2(sum(tr.items, x => x.v)) };
   }).filter(x => x.total >= min).sort((a, b) => a.when - b.when);

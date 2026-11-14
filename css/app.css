@@ -535,6 +535,7 @@ tr.lapsed td { color: var(--ink3); }
 #out-chart-meta { margin-left: auto; }
 #out-note { margin-top: 1.2rem; }
 .trip-parts { display: none; text-transform: none; letter-spacing: 0; }
+#out-trips-grid { margin-top: 1.6rem; }
 #out-trips-note { margin: 0; padding: 1rem 1.6rem; border-top: 1px solid var(--line); max-width: none; }
 #out-events .up-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

@@ -156,10 +156,22 @@ console.log('insights tests passed');
     tv(d(6, 14), -310, 'JETBLUE', 'Airfare'),
     { ts: d(3, 15), amount: -60, description: 'CAFE', merchant: 'CAFE', category: 'Dining' },
   ];
-  assert.deepEqual(['DELTA AIR LINES', 'HERTZ', 'AIRBNB', 'HILTON', 'CAFE X', 'GLOBAL ENTRY'].map(x => I.travelKind({ description: x })), ['flight', 'car', 'booked', 'stay', 'other', null]);
+  assert.deepEqual(['DELTA AIR LINES', 'Sixt AB1CDEFGH', 'SIXT 9600000001', 'AIRBNB * HM1ABCDEF2', 'HILTON', 'CAPITAL 1 LOUNGE', 'GLOBAL ENTRY'].map(x => I.travelKind({ description: x })),
+    ['flight', 'car', 'counter', 'booked', 'stay', 'other', null], 'a rental with a booking reference was reserved online; without one it was paid at the counter');
+  assert.equal(I.travelKind({ description: 'UNITED      0160000000001', raw_category: 'Airfare' }), 'flight', "the card's own label decides first");
   const tr = I.trips(travel, d(6, 20));
   assert.deepEqual(tr.map(x => [x.ym, x.total, x.booked]), [['2026-02', 735, false], ['2026-03', 1180, false], ['2026-04', 450, false], ['2026-06', 830, true]]);
   assert.deepEqual(tr[1].parts, { flight: 380, car: 120, stay: 680, other: 0 });
+  // A car reserved online goes to the trip where that company was paid at the
+  // counter, not to a nearer trip that used another; a booking charged again
+  // weeks later was settled then, and is a trip of its own.
+  const cars = [
+    tv(d(6, 14), -1400, 'Sixt AB1CDEFGH', 'Car Rental'), tv(d(7, 5), -250, 'Sixt AB1CDEFGH', 'Car Rental'),
+    tv(d(8, 8), -650, 'Sixt AB2JKLMNP', 'Car Rental'),
+    tv(d(8, 16), -600, 'COURTYARD HOTEL', 'Lodging'), tv(d(8, 17), -180, 'ENTERPRISE RENT-A-CAR', 'Car Rental'),
+    tv(d(8, 29), -20, 'SIXT_DENVER AP_POS_12', 'Car Rental'), tv(d(9, 1), -370, 'COT*HTL'), tv(d(9, 3), -10, 'LAKESIDE INN', 'Lodging'),
+  ];
+  assert.deepEqual(I.trips(cars, d(11, 7)).map(x => [x.ym, x.total, x.parts.car]), [['2026-07', 1650, 1650], ['2026-08', 780, 180], ['2026-09', 1050, 670]]);
   const st = I.tripStats(travel, d(6, 20));
   assert.deepEqual([st.count, st.typical, st.ahead, st.aheadCount], [3, 735, 830, 1]);
   const dup = I.duplicates([mk(1, -45, 'SHOP'), mk(2, -45, 'SHOP'), mk(5, -45, 'OTHER'), mk(30, -45, 'OTHER'), mk(1, -5, 'CAFE'), mk(1, -5, 'CAFE')]);

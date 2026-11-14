@@ -31,10 +31,12 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   transfers on their dates, plus everyday spending at its recent rate. Travel is left out of that
   rate, so **Room for a big spend** is what a trip (or any one-off) can cost while the balance
   stays above the amount you choose to keep. Try an amount and a date to see it on the forecast.
-  **Trips** are one a month, dated by what was charged while away (hotels, parks); flights, rental
-  cars and stays paid through a booking site are matched to the trip they were paid beside, or
-  else to the next one within four months. Anything paid ahead in the last two months with no
-  trip yet shows as paid toward a coming trip.
+  **Trips** are one a month, dated by what was charged while away: a hotel bill, a park fee, a
+  lounge, a rental car settled at the counter. Flights, Airbnb and booking-site stays, and rental
+  cars reserved online (they carry a booking reference) are matched to the trip they were paid
+  during, or else to a trip in the four months after; a reserved car goes to the trip where that
+  company was paid at the counter. Anything paid ahead in the last two months with no trip yet
+  shows as paid toward a coming trip.
   Runway shows how many months your money covers at usual spending and on essentials alone.
 - **Income by source.** Every deposit that counts as income is grouped by who paid it, and each
   source has a type: Salary, Side income, Reimbursements (Venmo and the like: people paying you
