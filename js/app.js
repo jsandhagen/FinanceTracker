@@ -217,12 +217,12 @@ document.addEventListener('pointermove', ev => {
 document.addEventListener('scroll', hideTip, true);
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', outlook: 'Outlook', home: 'What if: a home', income: 'Income', salary: 'Salary & raises', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
-const PARENT = { home: 'outlook', salary: 'income', budgets: 'spending' };   // sub-items in the menu
+const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', outlook: 'Outlook', whatif: 'What if', home: 'A home', raise: 'A raise', income: 'Income', salary: 'Salary', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
+const PARENT = { home: 'whatif', raise: 'whatif', salary: 'income', budgets: 'spending' };   // sub-items in the menu
 // The tabs across the top of a section with sub-items.
-const SUBS = { outlook: [['outlook', 'Forecast'], ['home', 'What if: a home']], income: [['income', 'Sources'], ['salary', 'Salary & raises']], spending: [['spending', 'Breakdown'], ['budgets', 'Budgets']] };
+const SUBS = { whatif: [['home', 'A home'], ['raise', 'A raise']], income: [['income', 'Sources'], ['salary', 'Salary']], spending: [['spending', 'Breakdown'], ['budgets', 'Budgets']] };
 const NAV_KEYS = Object.keys(VIEWS).filter(v => !PARENT[v]); // what the number keys 1-8 open
-const RANGE_FREE = new Set(['outlook', 'home', 'salary', 'budgets', 'recurring', 'accounts']); // these keep their own clock
+const RANGE_FREE = new Set(['outlook', 'home', 'raise', 'salary', 'budgets', 'recurring', 'accounts']); // these keep their own clock
 
 function showView() {
   const has = state.transactions.length > 0;
@@ -236,8 +236,12 @@ function showView() {
 const moveNav = fx.navMarker($('nav-list'));
 fx.spotlight();
 
+// 'What if' is a menu, not a view of its own: it opens the scenario last looked at.
+let lastWhatIf = 'home';
 function setView(v, { push = true } = {}) {
+  if (v === 'whatif') v = lastWhatIf;
   if (!VIEWS[v]) return;
+  if (PARENT[v] === 'whatif') lastWhatIf = v;
   view = v;
   incDraft = null;
   incMode = null;
@@ -371,7 +375,7 @@ function recompute(startMs, endMs) {
 function renderActive() {
   if (!CTX || $('dashboard').hidden) return;
   hideTip();
-  ({ overview: renderOverview, cashflow: renderCashflow, outlook: renderOutlook, home: renderHome, spending: renderSpending,
+  ({ overview: renderOverview, cashflow: renderCashflow, outlook: renderOutlook, home: renderHome, raise: renderIncome, spending: renderSpending,
     budgets: renderBudgets, income: renderSources, salary: renderIncome, recurring: renderRecurring, transactions: renderTransactions, accounts: renderAccounts })[view](CTX);
 }
 
@@ -893,7 +897,7 @@ const paidBack = ops => ops.reduce((s, t) => s + (t.paid_back ? t.amount : 0), 0
 // ── Income: sources ───────────────────────────────────────────────────────────
 // Every deposit that counts as income, grouped by who paid it. Each source has
 // a type: salary, a side job, people paying you back, interest or other. Types
-// are guessed and yours to change; the Salary & raises tab counts only Salary.
+// are guessed and yours to change; the Salary tab counts only Salary.
 const KIND_ORDER = ['salary', 'side', 'reimburse', 'interest', 'other'];
 const KIND_COLOR = { salary: C.in, side: '#c98500', reimburse: '#9085e9', interest: '#199e70', other: C.other };
 const KIND_NOTE = {
@@ -960,7 +964,7 @@ function renderSources(c) {
       <td class="dim col-hide-sm">${shortDate(A.localTs(x.last))}</td></tr>`).join('')}</tbody>`
     : `<tbody><tr><td class="empty">No income in this period.</td></tr></tbody>`;
 
-  $('src-foot').innerHTML = `Types: ${KIND_ORDER.map(k => `<b>${N.KINDS[k]}</b> ${KIND_NOTE[k]}`).join(' · ')}. Guessed types: your main paycheck and other deposits from the same employer are Salary, payroll from anyone else is Side income, Venmo, Zelle, Cash App and PayPal are Reimbursements. Change one and it sticks. Only Salary counts toward the <button class="link-btn" data-goto="salary">Salary &amp; raises</button> tracker. <b>Reimbursements are not income</b>: they come off your spending as <button class="link-btn" data-txn-cat="Paid back">Paid back</button>. To take one off a particular category instead, tap its category in the ledger. Selling something or a friend's share of rent you did not front? Type that source Other income.`;
+  $('src-foot').innerHTML = `Types: ${KIND_ORDER.map(k => `<b>${N.KINDS[k]}</b> ${KIND_NOTE[k]}`).join(' · ')}. Guessed types: your main paycheck and other deposits from the same employer are Salary, payroll from anyone else is Side income, Venmo, Zelle, Cash App and PayPal are Reimbursements. Change one and it sticks. Only Salary counts toward the <button class="link-btn" data-goto="salary">Salary</button> tracker. <b>Reimbursements are not income</b>: they come off your spending as <button class="link-btn" data-txn-cat="Paid back">Paid back</button>. To take one off a particular category instead, tap its category in the ledger. Selling something or a friend's share of rent you did not front? Type that source Other income.`;
 }
 
 async function saveSource(merchant, patch) {
@@ -1017,8 +1021,8 @@ function layoutIncome(cfg, pay, netPay) {
   const setup = incMode === 'setup';
   if (incSetupLayout !== setup) {
     incSetupLayout = setup;
-    $('inc-grid').append(...(setup ? ['inc-pay', 'inc-split-card', 'inc-raise-card', 'inc-year-card', 'inc-va-card']
-      : ['inc-split-card', 'inc-year-card', 'inc-raise-card', 'inc-va-card', 'inc-pay']).map(id => $(id)));
+    $('inc-grid').append(...(setup ? ['inc-pay', 'inc-split-card', 'inc-year-card', 'inc-va-card']
+      : ['inc-split-card', 'inc-year-card', 'inc-va-card', 'inc-pay']).map(id => $(id)));
     $('inc-va-card').className = `panel ${setup ? 'c5' : 'c7'}`;   // beside the short summary, the tax table has the room
     $('inc-year-card').className = `panel ${setup ? 'c7' : 'c5'}`;
   }
@@ -1063,7 +1067,7 @@ function renderIncome(c) {
     setKpis('inc-kpis', [kpiTile({ label: 'Gross per year', value: '—', sub: 'enter your salary below' }), kpiTile({ label: 'Take-home per paycheck', value: pay ? money(pay.amount) : '—', sub: pay ? `from ${esc(pay.merchant)}` : '' }),
       kpiTile({ label: 'Take-home per year', value: '—' }), kpiTile({ label: 'Kept of gross', value: '—' })]);
     for (const id of ['inc-split', 'inc-va', 'inc-year-sum', 'inc-raise-bar']) $(id).innerHTML = id === 'inc-raise-bar' ? '' : empty('Enter your salary to see this.');
-    $('inc-raise-table').innerHTML = ''; $('inc-raise-note').textContent = 'Enter your salary to try a raise.'; $('inc-year-legend').innerHTML = '';
+    $('inc-raise-table').innerHTML = ''; $('inc-raise-note').innerHTML = '<button class="link-btn" data-goto="salary">Enter your salary</button> to try a raise.'; $('inc-year-legend').innerHTML = '';
     for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear']) $(id).hidden = true;
     for (const id of ['inc-split-meta', 'inc-raise-meta', 'inc-year-meta', 'inc-va-meta']) $(id).textContent = '';
     fill('inc-raise', '');
@@ -1265,7 +1269,8 @@ async function saveIncome(cfg) {
   schedulePaycheck();
   renderIncome(CTX);
 }
-const incomeView = document.querySelector('.view[data-view="salary"]');
+// The pay form is under Salary and the raise under What if; both feed one config.
+const incomeView = { addEventListener: (type, fn) => document.querySelectorAll('.view[data-view="salary"], .view[data-view="raise"]').forEach(el => el.addEventListener(type, fn)) };
 incomeView.addEventListener('input', ev => {
   if (!ev.target.matches('input, select')) return;
   incDraft = readIncome();
@@ -1511,7 +1516,7 @@ function renderHome(c) {
     return;
   }
 
-  // You: pay from Salary & raises, spending and debts from the data.
+  // You: pay from Salary, spending and debts from the data.
   const pay = N.detectPaycheck(SCHED);
   const eff = { ...inc, netPay: Number(inc.netPay) > 0 ? Number(inc.netPay) : pay?.amount || null };
   const raised = N.raisedSalary(salary, inc.raise), hasRaise = !!inc.raise && raised > 0 && Math.abs(raised - salary) >= 0.5;
@@ -1594,8 +1599,8 @@ function renderHome(c) {
     + cell('Your take-home', money0(you.takeHome), 'a month')
     + cell('Your other spending', money0(spend.monthly), `a month, last ${spend.months} month${spend.months === 1 ? '' : 's'}`);
   $('home-raise-row').hidden = !hasRaise;
-  $('home-raise-label').textContent = hasRaise ? `Count the raise from Salary & raises (${money0(salary)} → ${money0(raised)})` : '';
-  $('home-who-note').innerHTML = `Pay comes from <button class="link-btn" data-goto="salary">Salary &amp; raises</button>. `
+  $('home-raise-label').textContent = hasRaise ? `Count the raise from What if / A raise (${money0(salary)} → ${money0(raised)})` : '';
+  $('home-who-note').innerHTML = `Pay comes from <button class="link-btn" data-goto="salary">Salary</button>. `
     + (cfg.debts == null ? (debtSeen > 0 ? `Your loan payments are read from the data: ${money0(debtSeen)} a month. ` : 'No loan payments were found in your data. ') + 'Type a figure to include what it cannot see, such as a card’s minimum payment. ' : '')
     + (cfg.rent == null ? (rentSeen > 0 ? `Housing now is what is filed under Housing: ${money0(rentSeen)} a month over the last three months. ` : 'Nothing is filed under Housing, so type what you pay now to compare. ') : '')
     + (co.on ? `A co-borrower is on the loan with you: a lender counts both incomes and both sets of debts in full, whoever pays what. ${co.split === 'income' ? `Split by income, you carry ${share} of the month and they carry ${theirShare}.` : co.split === 'even' ? 'You each carry half of the month.' : `You carry ${share} of the month.`}` : '');
@@ -3285,7 +3290,7 @@ async function boot() {
   const healed = settle(state.transactions);
   if (healed !== state.transactions) { state.transactions = healed; await store.set('transactions', healed); }
   await watch.load().catch(() => null);
-  if (VIEWS[location.hash.slice(1)]) view = location.hash.slice(1);
+  if (VIEWS[location.hash.slice(1)]) view = location.hash.slice(1) === 'whatif' ? 'home' : location.hash.slice(1);
   showView();
   history.replaceState({ view }, '', location.href);
   updateInstallButtons();

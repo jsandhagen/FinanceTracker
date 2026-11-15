@@ -26,7 +26,7 @@ export const DEFAULTS = {
   debts: null,      // your monthly debt payments; null: read from the data
   rent: null,       // what housing costs you now, a month; null: read from the data
   floor: 10,        // the savings rate to keep, %
-  raise: false,     // count the raise set under Salary & raises
+  raise: false,     // count the raise set under What if / A raise
   co: CO_DEFAULTS,
 };
 

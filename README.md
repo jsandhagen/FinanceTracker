@@ -22,7 +22,7 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
 
 - **One console, grouped by money in and money out.** Overview (net worth, income, spending,
   savings rate, each against the period before) and Cash flow (a flow-of-funds diagram and a
-  month-by-month table) on top. **Money in:** Income, by source, with Salary & raises under it.
+  month-by-month table) on top. **Money in:** Income, by source, with Salary under it.
   **Money out:** Spending (categories, trend, a daily heatmap, merchants, weekdays) with Budgets
   under it, and Recurring (detected bills and paychecks with their next expected date).
   **Records:** the Transactions ledger (search, sort, filter, export to CSV) and Accounts.
@@ -40,11 +40,12 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   company was paid at the counter. Anything paid ahead in the last two months with no trip yet
   shows as paid toward a coming trip.
   Runway shows how many months your money covers at usual spending and on essentials alone.
-- **What if: a home.** Under Outlook. The price three limits allow, and what any price does to
+- **What if** has a tab for each scenario: **A home** and **A raise**.
+- **What if: a home.** The price three limits allow, and what any price does to
   the month: the **lender's** (housing up to 28% of gross income, housing plus debt payments up
   to 36%), **yours** (what your take-home carries while you keep the savings rate you choose,
-  upkeep included) and the **cash** (closing costs plus at least 3% down). Pay comes from Salary
-  & raises, your other spending and loan payments from the data; rate, property tax, insurance,
+  upkeep included) and the **cash** (closing costs plus at least 3% down). Pay comes from Salary,
+  your other spending and loan payments from the data; rate, property tax, insurance,
   HOA and the rest are typed in. **A co-borrower** adds their gross income, debt payments and
   cash: a lender counts both of you in full, and the month is split between you by income,
   evenly, or by a share you set, so your limit and your savings rate are measured on your part.
@@ -57,10 +58,10 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   spending, in their own **Paid back** line, since which purchase they cover is not known. File
   one under a category (tap its category in the ledger) and it comes off that category instead.
 - **Salary tracker and "what if".** Enter your salary, how often you are paid, and your bonus and
-  the month it lands. Salary & raises works out federal tax, Social Security, Medicare and
+  the month it lands. Salary works out federal tax, Social Security, Medicare and
   **Virginia** income tax, then backs your own rates out of the take-home you actually receive
   (read from your deposits, or typed in): whatever the tax tables do not explain is treated as
-  money taken out before tax. Type a raise, as a percentage, an amount or a new salary, to see
+  money taken out before tax. Under **What if / A raise**, type a raise, as a percentage, an amount or a new salary, to see
   what you keep of it, how each tax moves, and what it does to your savings rate. Its
   month-by-month tracking counts only sources typed Salary.
 - **Optional bank connection through Plaid**, so new transactions arrive without downloading
@@ -139,7 +140,7 @@ Before step 3, the app's package name has to be registered in the Plaid dashboar
 key has to be set up once so updates install over the app without losing its data. Both are in
 [android/README.md](android/README.md).
 
-## Salary & raises
+## Salary, and What if: a raise
 
 The figures are estimates for tax year 2026, built from the federal brackets and standard
 deduction, Social Security and Medicare, and Virginia's rates, standard deduction and personal

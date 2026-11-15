@@ -32,6 +32,8 @@
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
     <g id="i-income" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 13.5h12M3.5 11V8M8 11V5M12.5 11V2.5M10.5 4.5l2-2 2 2"/></g>
+    <g id="i-whatif" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 8h4l3-4h5"/><path d="M6 8l3 4h5" stroke-dasharray="1.5 2.5"/></g>
+    <g id="i-salary" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><rect x="2" y="4" width="12" height="8"/><path d="M8 6.5v3"/></g>
     <g id="i-home" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 8l6-5 6 5"/><path d="M4 7v6h8V7"/><path d="M7 13v-3h2v3"/></g>
     <g id="i-raise" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 12l4-4 3 3 5-6M10.5 5H14v3.5"/></g>
     <g id="i-recurring" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M13 6V3M13 6h-3M13 6a5.5 5.5 0 1 0 .5 3.5"/></g>
@@ -90,17 +92,19 @@
       <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
       <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
       <button class="nav-item" data-view="outlook" data-rail-tip="Outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span><kbd>3</kbd></button>
-      <button class="nav-item nav-sub" data-view="home"><svg viewBox="0 0 16 16"><use href="#i-home"/></svg><span>What if: a home</span></button>
+      <button class="nav-item" data-view="whatif" data-rail-tip="What if"><svg viewBox="0 0 16 16"><use href="#i-whatif"/></svg><span>What if</span><kbd>4</kbd></button>
+      <button class="nav-item nav-sub" data-view="home"><svg viewBox="0 0 16 16"><use href="#i-home"/></svg><span>A home</span></button>
+      <button class="nav-item nav-sub" data-view="raise"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>A raise</span></button>
       <div class="nav-group">Money in</div>
-      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>4</kbd></button>
-      <button class="nav-item nav-sub" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
+      <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>5</kbd></button>
+      <button class="nav-item nav-sub" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-salary"/></svg><span>Salary</span></button>
       <div class="nav-group">Money out</div>
-      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>5</kbd></button>
+      <button class="nav-item" data-view="spending" data-rail-tip="Spending"><svg viewBox="0 0 16 16"><use href="#i-spending"/></svg><span>Spending</span><kbd>6</kbd></button>
       <button class="nav-item nav-sub" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
-      <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>6</kbd></button>
+      <button class="nav-item" data-view="recurring" data-rail-tip="Recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span><kbd>7</kbd></button>
       <div class="nav-group">Records</div>
-      <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>7</kbd></button>
-      <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>8</kbd></button>
+      <button class="nav-item" data-view="transactions" data-rail-tip="Transactions"><svg viewBox="0 0 16 16"><use href="#i-transactions"/></svg><span>Transactions</span><kbd>8</kbd></button>
+      <button class="nav-item" data-view="accounts" data-rail-tip="Accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span><kbd>9</kbd></button>
     </nav>
     <div class="nav-section">
       <div class="nav-label">Accounts</div>
@@ -272,7 +276,7 @@
         </div>
       </section>
 
-      <!-- What if: a home. The price three limits allow, alone or with a co-borrower -->
+      <!-- What if / A home. The price three limits allow, alone or with a co-borrower -->
       <section class="view" data-view="home" hidden>
         <div class="kpi-row" id="home-kpis"></div>
         <div class="empty" id="home-need" hidden>The lender's limit works from gross pay, and yours from take-home. <button class="link-btn" data-goto="salary">Enter your salary</button> to see what you could buy.</div>
@@ -358,6 +362,44 @@
         <p class="inc-foot" id="home-foot"></p>
       </section>
 
+      <!-- What if / A raise: what is kept of it, and what it does to the savings rate -->
+      <section class="view" data-view="raise" hidden>
+        <div class="grid">
+          <div class="panel c12" id="inc-raise-card">
+            <div class="panel-head"><span class="panel-title">A raise</span><span class="panel-meta" id="inc-raise-meta"></span></div>
+            <div class="panel-body">
+              <div class="inc-raise-row">
+                <div class="seg" id="inc-raise-mode" role="group" aria-label="How the raise is given">
+                  <button type="button" data-mode="pct" title="A percentage of your salary">%</button>
+                  <button type="button" data-mode="usd" title="Dollars a year">$</button>
+                  <button type="button" data-mode="salary">New salary</button>
+                </div>
+                <div class="input-affix"><span id="inc-raise-pre">$</span><input id="inc-raise" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise" /><span class="suffix" id="inc-raise-suf">%</span></div>
+                <div class="raise-picks" id="inc-raise-picks">
+                  <button type="button" class="btn small" data-pick="3">3%</button>
+                  <button type="button" class="btn small" data-pick="5">5%</button>
+                  <button type="button" class="btn small" data-pick="10">10%</button>
+                </div>
+                <button type="button" class="link-btn" id="inc-raise-clear" hidden>Clear</button>
+              </div>
+              <div class="kpi-row" id="inc-raise-figs" hidden></div>
+              <div id="inc-raise-bar"></div>
+              <div class="raise-save" id="inc-raise-save" hidden>
+                <label for="inc-save-share">Of the extra take-home, save</label>
+                <div class="input-affix"><input id="inc-save-share" type="number" inputmode="decimal" min="0" max="100" step="5" value="100" /><span class="suffix">%</span></div>
+                <span class="dim">and spend the rest.</span>
+                <span class="raise-save-out" id="inc-save-out"></span>
+              </div>
+              <details class="raise-more" id="inc-raise-more" hidden>
+                <summary>Full breakdown, now and with the raise</summary>
+                <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
+              </details>
+              <div class="note" id="inc-raise-note"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Spending -->
       <section class="view" data-view="spending" hidden>
         <div class="grid">
@@ -422,7 +464,7 @@
         <p class="inc-foot" id="src-foot"></p>
       </section>
 
-      <!-- Salary & raises: what pay comes to after tax, and what a raise would do -->
+      <!-- Salary: what pay comes to after tax. The raise calculator is under What if. -->
       <section class="view" data-view="salary" hidden>
         <div class="kpi-row" id="inc-kpis"></div>
         <!-- The order of these panels is set by layoutIncome: the form leads
@@ -467,38 +509,6 @@
           <div class="panel c7" id="inc-split-card">
             <div class="panel-head"><span class="panel-title">Where a paycheck goes</span><span class="panel-meta" id="inc-split-meta"></span></div>
             <div class="panel-body flush" id="inc-split"></div>
-          </div>
-          <div class="panel c12" id="inc-raise-card">
-            <div class="panel-head"><span class="panel-title">What if: a raise</span><span class="panel-meta" id="inc-raise-meta"></span></div>
-            <div class="panel-body">
-              <div class="inc-raise-row">
-                <div class="seg" id="inc-raise-mode" role="group" aria-label="How the raise is given">
-                  <button type="button" data-mode="pct" title="A percentage of your salary">%</button>
-                  <button type="button" data-mode="usd" title="Dollars a year">$</button>
-                  <button type="button" data-mode="salary">New salary</button>
-                </div>
-                <div class="input-affix"><span id="inc-raise-pre">$</span><input id="inc-raise" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise" /><span class="suffix" id="inc-raise-suf">%</span></div>
-                <div class="raise-picks" id="inc-raise-picks">
-                  <button type="button" class="btn small" data-pick="3">3%</button>
-                  <button type="button" class="btn small" data-pick="5">5%</button>
-                  <button type="button" class="btn small" data-pick="10">10%</button>
-                </div>
-                <button type="button" class="link-btn" id="inc-raise-clear" hidden>Clear</button>
-              </div>
-              <div class="kpi-row" id="inc-raise-figs" hidden></div>
-              <div id="inc-raise-bar"></div>
-              <div class="raise-save" id="inc-raise-save" hidden>
-                <label for="inc-save-share">Of the extra take-home, save</label>
-                <div class="input-affix"><input id="inc-save-share" type="number" inputmode="decimal" min="0" max="100" step="5" value="100" /><span class="suffix">%</span></div>
-                <span class="dim">and spend the rest.</span>
-                <span class="raise-save-out" id="inc-save-out"></span>
-              </div>
-              <details class="raise-more" id="inc-raise-more" hidden>
-                <summary>Full breakdown, now and with the raise</summary>
-                <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
-              </details>
-              <div class="note" id="inc-raise-note"></div>
-            </div>
           </div>
           <div class="panel c7" id="inc-year-card">
             <div class="panel-head"><span class="panel-title">This year</span><span class="panel-meta" id="inc-year-meta"></span></div>
@@ -622,9 +632,9 @@
     <div class="sheet-head"><h2 id="more-title">More</h2><button class="icon-btn" id="more-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
     <div class="more-list" id="more-list">
       <button class="nav-item" data-view="outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span></button>
-      <button class="nav-item" data-view="home"><svg viewBox="0 0 16 16"><use href="#i-home"/></svg><span>What if: a home</span></button>
+      <button class="nav-item" data-view="whatif"><svg viewBox="0 0 16 16"><use href="#i-whatif"/></svg><span>What if</span></button>
       <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
-      <button class="nav-item" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
+      <button class="nav-item" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-salary"/></svg><span>Salary</span></button>
       <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
       <button class="nav-item" data-view="recurring"><svg viewBox="0 0 16 16"><use href="#i-recurring"/></svg><span>Recurring</span></button>
       <button class="nav-item" data-view="accounts"><svg viewBox="0 0 16 16"><use href="#i-accounts"/></svg><span>Accounts</span></button>
