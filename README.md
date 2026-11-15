@@ -40,6 +40,15 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   company was paid at the counter. Anything paid ahead in the last two months with no trip yet
   shows as paid toward a coming trip.
   Runway shows how many months your money covers at usual spending and on essentials alone.
+- **What if: a home.** Under Outlook. The price three limits allow, and what any price does to
+  the month: the **lender's** (housing up to 28% of gross income, housing plus debt payments up
+  to 36%), **yours** (what your take-home carries while you keep the savings rate you choose,
+  upkeep included) and the **cash** (closing costs plus at least 3% down). Pay comes from Salary
+  & raises, your other spending and loan payments from the data; rate, property tax, insurance,
+  HOA and the rest are typed in. **A co-borrower** adds their gross income, debt payments and
+  cash: a lender counts both of you in full, and the month is split between you by income,
+  evenly, or by a share you set, so your limit and your savings rate are measured on your part.
+  It shows what you would qualify for alone beside it, and can count the raise you are trying.
 - **Income by source.** Every deposit that counts as income is grouped by who paid it, and each
   source has a type: Salary, Side income, Reimbursements (Venmo and the like: people paying you
   back), Interest or Other. Types are guessed (your main paycheck and its employer are Salary,

@@ -967,3 +967,19 @@ tr.lapsed td { color: var(--ink3); }
   .view[data-view="salary"] .data th, .view[data-view="salary"] .data td, #cf-table th, #cf-table td { padding-left: 0.7rem; padding-right: 0.7rem; }
   .view[data-view="salary"] .data th { white-space: normal; }
 }
+
+/* ── What if: a home ── */
+.home-check { white-space: normal; margin: 0.4rem 0 0.2rem; text-transform: none; letter-spacing: 0; }
+.home-co .check { white-space: normal; }
+#home-co { margin-top: 1.2rem; }
+#home-co .seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+#home-co .seg button { min-width: 0; padding: 0 0.4rem; white-space: nowrap; font-size: 1.1rem; letter-spacing: 0.02em; }
+.home-limit { padding: 0.4rem 0 1.4rem; }
+.home-limit + .home-limit { border-top: 1px solid var(--line); padding-top: 1.4rem; }
+.home-limit-head { display: flex; align-items: baseline; gap: 1.2rem; }
+.home-limit-head span:first-child { color: var(--ink2); font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.06em; flex: 1; }
+.home-limit-head b { font-size: 2rem; font-weight: 500; }
+.home-sub td { border-top: 1px solid var(--line-strong); color: var(--ink); font-weight: 600; }
+#home-at .out-big small { font-size: 1.4rem; color: var(--ink3); letter-spacing: 0; }
+#home-at .data + .data, #home-at .table-wrap + .table-wrap { border-top: 1px solid var(--line); }
+#home-need { padding: 3rem 1.4rem; }

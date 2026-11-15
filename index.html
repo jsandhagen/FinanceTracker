@@ -32,6 +32,7 @@
     <g id="i-spending" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 3h9M2 8h12M2 13h6"/></g>
     <g id="i-budgets" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></g>
     <g id="i-income" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 13.5h12M3.5 11V8M8 11V5M12.5 11V2.5M10.5 4.5l2-2 2 2"/></g>
+    <g id="i-home" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 8l6-5 6 5"/><path d="M4 7v6h8V7"/><path d="M7 13v-3h2v3"/></g>
     <g id="i-raise" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M2 12l4-4 3 3 5-6M10.5 5H14v3.5"/></g>
     <g id="i-recurring" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M13 6V3M13 6h-3M13 6a5.5 5.5 0 1 0 .5 3.5"/></g>
     <g id="i-transactions" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"><path d="M5 4h9M5 8h9M5 12h9M2 4h.5M2 8h.5M2 12h.5"/></g>
@@ -89,6 +90,7 @@
       <button class="nav-item" data-view="overview" data-rail-tip="Overview"><svg viewBox="0 0 16 16"><use href="#i-overview"/></svg><span>Overview</span><kbd>1</kbd></button>
       <button class="nav-item" data-view="cashflow" data-rail-tip="Cash flow"><svg viewBox="0 0 16 16"><use href="#i-cashflow"/></svg><span>Cash flow</span><kbd>2</kbd></button>
       <button class="nav-item" data-view="outlook" data-rail-tip="Outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span><kbd>3</kbd></button>
+      <button class="nav-item nav-sub" data-view="home"><svg viewBox="0 0 16 16"><use href="#i-home"/></svg><span>What if: a home</span></button>
       <div class="nav-group">Money in</div>
       <button class="nav-item" data-view="income" data-rail-tip="Income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span><kbd>4</kbd></button>
       <button class="nav-item nav-sub" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
@@ -268,6 +270,92 @@
               <p class="inc-note" id="out-trips-note">One trip a month, dated by what was charged while you were away: a hotel bill, a park fee, a lounge, a rental car settled at the counter. Flights, Airbnb and booking-site stays, and rental cars reserved online are matched to the trip they were paid during, or else to a trip in the four months after. A reserved car goes to the trip where that company was paid at the counter.</p></div>
           </div>
         </div>
+      </section>
+
+      <!-- What if: a home. The price three limits allow, alone or with a co-borrower -->
+      <section class="view" data-view="home" hidden>
+        <div class="kpi-row" id="home-kpis"></div>
+        <div class="empty" id="home-need" hidden>The lender's limit works from gross pay, and yours from take-home. <button class="link-btn" data-goto="salary">Enter your salary</button> to see what you could buy.</div>
+        <div class="grid" id="home-grid">
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">The home</span><span class="panel-meta">Saved with your settings</span></div>
+            <div class="panel-body">
+              <form class="inc-form" autocomplete="off">
+                <label for="home-price">Price</label>
+                <div class="input-affix"><span>$</span><input id="home-price" data-home="price" type="number" inputmode="decimal" min="0" step="5000" placeholder="the most you could buy" /></div>
+                <label for="home-rate">Interest rate</label>
+                <div class="input-affix"><input id="home-rate" data-home="rate" type="number" inputmode="decimal" min="0" max="30" step="0.125" /><span class="suffix">%</span></div>
+                <label for="home-years">Term</label>
+                <select id="home-years" data-home="years" class="select">
+                  <option value="30">30 years</option><option value="20">20 years</option><option value="15">15 years</option><option value="10">10 years</option>
+                </select>
+                <label for="home-tax">Property tax, a year</label>
+                <div class="input-affix"><input id="home-tax" data-home="taxRate" type="number" inputmode="decimal" min="0" max="10" step="0.05" /><span class="suffix">% of price</span></div>
+                <label for="home-ins">Home insurance, a year</label>
+                <div class="input-affix"><span>$</span><input id="home-ins" data-home="insurance" type="number" inputmode="decimal" min="0" step="50" /></div>
+                <label for="home-hoa">HOA or condo fee, a month</label>
+                <div class="input-affix"><span>$</span><input id="home-hoa" data-home="hoa" type="number" inputmode="decimal" min="0" step="10" placeholder="0" /></div>
+              </form>
+              <details class="raise-more">
+                <summary>Closing costs, mortgage insurance and upkeep</summary>
+                <form class="inc-form" autocomplete="off">
+                  <label for="home-closing">Closing costs</label>
+                  <div class="input-affix"><input id="home-closing" data-home="closing" type="number" inputmode="decimal" min="0" max="15" step="0.25" /><span class="suffix">% of price</span></div>
+                  <label for="home-pmi">Mortgage insurance, a year</label>
+                  <div class="input-affix"><input id="home-pmi" data-home="pmiRate" type="number" inputmode="decimal" min="0" max="5" step="0.05" /><span class="suffix">% of loan</span></div>
+                  <label for="home-upkeep">Upkeep, a year</label>
+                  <div class="input-affix"><input id="home-upkeep" data-home="upkeep" type="number" inputmode="decimal" min="0" max="10" step="0.25" /><span class="suffix">% of price</span></div>
+                </form>
+              </details>
+            </div>
+          </div>
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title" id="home-at-title">The month</span><span class="panel-meta" id="home-at-meta"></span></div>
+            <div class="panel-body flush" id="home-at"></div>
+          </div>
+          <div class="panel c5">
+            <div class="panel-head"><span class="panel-title">Who is on the loan</span><span class="panel-meta" id="home-who-meta"></span></div>
+            <div class="panel-body">
+              <div class="pay-sum" id="home-you"></div>
+              <form class="inc-form" autocomplete="off">
+                <label for="home-cash">Cash you put in</label>
+                <div class="input-affix"><span>$</span><input id="home-cash" data-home="cash" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
+                <label for="home-debts">Your debt payments, a month</label>
+                <div class="input-affix"><span>$</span><input id="home-debts" data-home="debts" type="number" inputmode="decimal" min="0" step="25" /></div>
+                <label for="home-rent">Housing costs you now, a month</label>
+                <div class="input-affix"><span>$</span><input id="home-rent" data-home="rent" type="number" inputmode="decimal" min="0" step="25" /></div>
+                <label for="home-floor">Keep your savings rate at least</label>
+                <div class="input-affix"><input id="home-floor" data-home="floor" type="number" inputmode="numeric" min="0" max="90" step="5" /><span class="suffix">%</span></div>
+              </form>
+              <label class="check home-check" id="home-raise-row" hidden><input type="checkbox" id="home-raise" data-home="raise" /> <span id="home-raise-label">Count the raise</span></label>
+              <div class="out-set home-co">
+                <label class="check"><input type="checkbox" id="home-co-on" data-co="on" /> Buying with a co-borrower</label>
+              </div>
+              <div id="home-co" hidden>
+                <form class="inc-form" autocomplete="off">
+                  <label for="home-co-income">Their gross income, a year</label>
+                  <div class="input-affix"><span>$</span><input id="home-co-income" data-co="income" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
+                  <label for="home-co-debts">Their debt payments, a month</label>
+                  <div class="input-affix"><span>$</span><input id="home-co-debts" data-co="debts" type="number" inputmode="decimal" min="0" step="25" placeholder="0" /></div>
+                  <label for="home-co-cash">Cash they put in</label>
+                  <div class="input-affix"><span>$</span><input id="home-co-cash" data-co="cash" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
+                  <label id="home-split-label">The monthly cost is split</label>
+                  <div class="seg" id="home-split" role="group" aria-labelledby="home-split-label">
+                    <button type="button" data-split="income">By income</button><button type="button" data-split="even">Evenly</button><button type="button" data-split="custom">Set it</button>
+                  </div>
+                  <label for="home-co-share" id="home-share-label">Your share</label>
+                  <div class="input-affix" id="home-share-box"><input id="home-co-share" data-co="share" type="number" inputmode="decimal" min="0" max="100" step="5" /><span class="suffix">%</span></div>
+                </form>
+              </div>
+              <div class="note" id="home-who-note"></div>
+            </div>
+          </div>
+          <div class="panel c7">
+            <div class="panel-head"><span class="panel-title">The three limits</span><span class="panel-meta" id="home-limits-meta"></span></div>
+            <div class="panel-body flush" id="home-limits"></div>
+          </div>
+        </div>
+        <p class="inc-foot" id="home-foot"></p>
       </section>
 
       <!-- Spending -->
@@ -534,6 +622,7 @@
     <div class="sheet-head"><h2 id="more-title">More</h2><button class="icon-btn" id="more-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14"><use href="#i-x"/></svg></button></div>
     <div class="more-list" id="more-list">
       <button class="nav-item" data-view="outlook"><svg viewBox="0 0 16 16"><use href="#i-outlook"/></svg><span>Outlook</span></button>
+      <button class="nav-item" data-view="home"><svg viewBox="0 0 16 16"><use href="#i-home"/></svg><span>What if: a home</span></button>
       <button class="nav-item" data-view="income"><svg viewBox="0 0 16 16"><use href="#i-income"/></svg><span>Income</span></button>
       <button class="nav-item" data-view="salary"><svg viewBox="0 0 16 16"><use href="#i-raise"/></svg><span>Salary &amp; raises</span></button>
       <button class="nav-item" data-view="budgets"><svg viewBox="0 0 16 16"><use href="#i-budgets"/></svg><span>Budgets</span></button>
