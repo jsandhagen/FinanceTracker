@@ -88,6 +88,9 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   utilities, insurers, pharmacies and gyms land in the same category whether they were paid by card
   or from checking, and whether the data came from a CSV or Plaid. A card's own specific category
   (a Walmart run it calls Grocery) is kept.
+- **Loan payments are spending.** A student loan or car payment is filed under Loan Payment and
+  counts against the savings rate everywhere, and among the essentials in Runway. Only moving
+  money between your own accounts, or paying the card, is left out.
 - **Money that is not spending or income is kept out.** Contributions to Vanguard, Fidelity,
   Schwab, Robinhood and the like are Investment Transfers. A PayPal purchase counts as spending,
   and only a PayPal transfer to a person is a transfer. Affirm, Klarna and Afterpay payments

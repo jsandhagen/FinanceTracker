@@ -198,6 +198,12 @@ assert.equal(kw('Withdrawal to 360 Savings XXXXXXX9'), 'Savings Transfer');
   assert.equal(bankCat('ATM WITHDRAWAL 123 MAIN ST').category, 'Other');
   // More card issuers paid from checking.
   for (const d of ['AMEX EPAYMENT ACH PMT', 'SYNCHRONY BANK PAYMENT', 'CHASE CREDIT CRD AUTOPAY']) assert.ok(bankCat(d).is_transfer, d);
+  // A loan payment is money gone, so it is spending; only the card payment is a transfer.
+  for (const d of ['NELNET STUDENT LOAN PMT', 'TOYOTA FINANCIAL RETAIL', 'DEPT EDUCATION STUDENT LN']) {
+    const r = bankCat(d);
+    assert.ok(r.category === 'Loan Payment' && !r.is_transfer, d);
+  }
+  assert.ok(I.ESSENTIAL.has('Loan Payment'));
   // A Virginia bill or two.
   for (const d of ['XFINITY MOBILE', 'PEPCO BILL PAY', 'FAIRFAX WATER']) assert.equal(bankCat(d).category, 'Utilities & Bills', d);
 

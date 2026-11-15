@@ -58,6 +58,7 @@ export function demoFiles(today = new Date(), months = 14) {
     if (dom === 12) chkRow(d, 'DOMINION ENERGY BILLPAY', between(68, [11, 0, 1, 6, 7].includes(d.getMonth()) ? 165 : 105), false);
     if (dom === 17) chkRow(d, 'Planet Fitness', 24.99, false);
     if (dom === 18) chkRow(d, 'VERIZON WIRELESS', 85, false);
+    if (dom === 20) chkRow(d, 'NELNET STUDENT LOAN PMT', 285, false);
     if (dom === 25 && ccOwed > 0) {
       const pay = Math.round(ccOwed * 100) / 100;
       chkRow(d, 'CAPITAL ONE MOBILE PMT', pay, false);

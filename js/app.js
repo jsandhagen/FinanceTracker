@@ -1472,7 +1472,7 @@ function renderOutlook() {
     <div class="sum-row"><span>Essentials a month</span><b>${money0(o.monthNeed)}</b></div>
     <div class="sum-row total"><span>At usual spending</span><span>${months(o.liquid, o.monthAll)} months</span></div>
     <div class="sum-row total"><span>Essentials only</span><span>${months(o.liquid, o.monthNeed)} months</span></div>
-    <p class="out-say dim">Essentials are housing, utilities, insurance, groceries, health and transportation. Based on the last ${o.rate.span} days.</p>`;
+    <p class="out-say dim">Essentials are housing, loan payments, utilities, insurance, groceries, health and transportation. Based on the last ${o.rate.span} days.</p>`;
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 async function saveOutlook(patch) {
@@ -1523,13 +1523,14 @@ function renderHome(c) {
   const withRaise = cfg.raise && hasRaise;
   const proj = N.project(eff, N.ratesFor(eff), withRaise ? raised : salary), year = proj.full;
   const lastIso = isoLocal(DATA_LAST);
-  const isHome = t => t.category === 'Housing';
-  const spend = H.monthlyAvg(c.allOps, lastIso, t => (isHome(t) ? 0 : I.spent(t)));
+  // Housing and loan payments are set apart: one is replaced by the home, the
+  // other is what a lender counts as debt. Both can be typed over.
+  const isHome = t => t.category === 'Housing', isDebt = t => t.category === 'Loan Payment';
+  const spend = H.monthlyAvg(c.allOps, lastIso, t => (isHome(t) || isDebt(t) ? 0 : I.spent(t)));
   const rentSeen = H.monthlyAvg(c.allOps, lastIso, t => (isHome(t) ? I.spent(t) : 0), 3).monthly;
-  const debtSeen = H.monthlyAvg(ALL_TXN, lastIso, t => (t.category === 'Loan Payment' && t.amount < 0 ? -t.amount : 0), 3).monthly;
+  const debtSeen = Math.max(0, H.monthlyAvg(c.allOps, lastIso, t => (isDebt(t) ? I.spent(t) : 0), 3).monthly);
   const rent = cfg.rent ?? rentSeen, debts = cfg.debts ?? debtSeen;
   $('home-rent').placeholder = fmt0(rentSeen); $('home-debts').placeholder = fmt0(debtSeen);
-  // Loan payments are filed as transfers, not spending, so they are added here.
   const you = { gross: year.gross, takeHome: year.net / 12, debts, other: spend.monthly + debts, cash: cfg.cash, floor: cfg.floor / 100, co };
 
   homeGross = you.gross;
@@ -1630,7 +1631,7 @@ function renderHome(c) {
           row('Runway left, at your new monthly spending', `${monthsOf(left, you.other + a.mine)} months`)])])}
     </div>`;
 
-  $('home-foot').textContent = `An estimate, not a pre-approval. The lender's limit uses the common conventional ratios (${pct(H.FRONT)} and ${pct(H.BACK)}); lenders vary, and many go higher with strong credit. Rates, property tax and insurance are the figures you enter; nothing is looked up. Savings rates here are of take-home, after loan payments, so they can sit under the rate shown elsewhere. The mortgage interest deduction is not modelled: with the standard deduction it rarely changes the tax. A co-borrower is fully liable for the whole loan, whatever split you agree between you.`;
+  $('home-foot').textContent = `An estimate, not a pre-approval. The lender's limit uses the common conventional ratios (${pct(H.FRONT)} and ${pct(H.BACK)}); lenders vary, and many go higher with strong credit. Rates, property tax and insurance are the figures you enter; nothing is looked up. The savings rate here is your take-home pay against your average spending, loan payments included: the same measure as under A raise. Overview's is what actually came in and went out in the period. The mortgage interest deduction is not modelled: with the standard deduction it rarely changes the tax. A co-borrower is fully liable for the whole loan, whatever split you agree between you.`;
 }
 
 // The forms as they stand. Blank fields go back to what is read from the data

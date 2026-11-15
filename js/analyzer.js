@@ -194,10 +194,10 @@ export const CHECKING_KEYWORD_RULES = [
     'chase pmt', 'chase credit crd', 'credit card pmt', 'citi card', 'citi autopay', 'discover pmt',
     'discover e-payment', 'amex epayment', 'american express', 'applecard', 'apple card',
     'gs bank', 'synchrony', 'barclaycard', 'wells fargo card', 'usaa credit', 'usaa cc'], 'Credit Card Payment', true],
-  [['student loan', 'loan pmt', 'sallie mae', 'navient', 'nelnet', 'mohela', 'aidvantage',
+  [['student loan', 'student ln', 'dept education', 'dept of education', 'loan pmt', 'sallie mae', 'navient', 'nelnet', 'mohela', 'aidvantage',
     'first community credit', 'community credit union', 'auto loan', 'car loan', 'toyota financial',
     'toyota motor cr', 'honda finance', 'american honda', 'ally auto', 'tesla finance',
-    'preauthorized withdrawal to first'], 'Loan Payment', true],
+    'preauthorized withdrawal to first'], 'Loan Payment', false],
   // PayPal alone is usually a purchase ("PAYPAL *NETFLIX"), filed by the rules
   // below; only a transfer to or from a person is a P2P move.
   [['venmo payment', 'zelle payment', 'zelle money sent', 'zelle to', 'cashapp pay', 'cash app*',
@@ -236,11 +236,14 @@ export const SAVINGS_KEYWORD_RULES = [
   [['monthly interest', 'interest paid', 'apy interest'], 'Interest Income', false],
   [['360 checking', '360 performance savings', '360 savings', '360 money market'], 'Savings Transfer', true],
   [['dept education', 'student ln', 'dept of education', 'student loan',
-    'sallie mae', 'navient'], 'Loan Payment', true],
+    'sallie mae', 'navient'], 'Loan Payment', false],
 ];
 
+// A loan payment is not one of these: the money leaves for good, so it is
+// spending (category Loan Payment). A card payment is a transfer because what
+// the card bought is already counted.
 export const TRANSFER_CATEGORIES = new Set([
-  'Savings Transfer', 'Investment Transfer', 'Credit Card Payment', 'Loan Payment', 'P2P Transfer', 'Payment',
+  'Savings Transfer', 'Investment Transfer', 'Credit Card Payment', 'P2P Transfer', 'Payment',
 ]);
 
 // A deposit filed under one of these is money coming back, not money earned.
@@ -262,7 +265,7 @@ function hasKeyword(text, kw) {
 
 export const ALL_CATS = [
   'Income', 'Shopping', 'Subscriptions', 'Transportation', 'Groceries',
-  'Dining', 'Utilities & Bills', 'Housing', 'Insurance', 'Health',
+  'Dining', 'Utilities & Bills', 'Housing', 'Loan Payment', 'Insurance', 'Health',
   'Travel', 'Entertainment', 'Education', 'Fees', 'Interest Income', 'Other',
 ];
 

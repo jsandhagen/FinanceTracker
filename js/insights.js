@@ -273,7 +273,7 @@ const addMonth = (ms, n) => {
 const dayIndex = (ts, from) => Math.round((ts - from) / DAY);
 
 // Spending that keeps a household running whatever else is cut.
-export const ESSENTIAL = new Set(['Housing', 'Utilities & Bills', 'Insurance', 'Groceries', 'Health', 'Transportation']);
+export const ESSENTIAL = new Set(['Housing', 'Loan Payment', 'Utilities & Bills', 'Insurance', 'Groceries', 'Health', 'Transportation']);
 
 // Spending per day over the last `days` of data, net of refunds. `skip` leaves
 // transactions out: the outlook drops detected bills (they are dated events of
