@@ -983,3 +983,51 @@ tr.lapsed td { color: var(--ink3); }
 #home-at .out-big small { font-size: 1.4rem; color: var(--ink3); letter-spacing: 0; }
 #home-at .data + .data, #home-at .table-wrap + .table-wrap { border-top: 1px solid var(--line); }
 #home-need { padding: 3rem 1.4rem; }
+
+/* ── The rail: a ruled track with a handle, for the What if views ── */
+.rail { position: relative; padding: 7.4rem 0 2.6rem; touch-action: pan-y; cursor: ew-resize; -webkit-user-select: none; user-select: none; --tone: var(--accent); --tone-glow: var(--glow); }
+.rail[data-tone=ok] { --tone: var(--pos); --tone-glow: rgba(79, 214, 139, 0.5); }
+.rail[data-tone=near] { --tone: var(--warn); --tone-glow: rgba(245, 176, 65, 0.5); }
+.rail[data-tone=over] { --tone: var(--neg); --tone-glow: rgba(255, 107, 107, 0.5); }
+.rail-track { position: relative; height: 1.4rem; background: #030303; border: 1px solid var(--line-strong); }
+/* Ruled like a scale: a fine tick every fortieth, a taller one every eighth. */
+.rail-track::before, .rail-track::after { content: ''; position: absolute; left: 0; right: 0; pointer-events: none; }
+.rail-track::before { top: 100%; height: 0.5rem; background: repeating-linear-gradient(90deg, var(--line-strong) 0 1px, transparent 1px 2.5%); }
+.rail-track::after { top: 100%; height: 0.9rem; background: repeating-linear-gradient(90deg, var(--ink3) 0 1px, transparent 1px 12.5%); opacity: 0.6; }
+.rail-zones i { position: absolute; top: 0; bottom: 0; opacity: 0.2; transition: opacity 0.2s; }
+.rail-zones .ok { background: var(--pos); } .rail-zones .near { background: var(--warn); } .rail-zones .over { background: var(--neg); }
+.rail.dragging .rail-zones i { opacity: 0.32; }
+.rail-fill { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, var(--tone) 0 var(--seg), transparent var(--seg) calc(var(--seg) + 2px)); box-shadow: 0 0 1.6rem var(--tone-glow); transition: box-shadow 0.2s; }
+.rail-handle { position: absolute; top: 7.4rem; width: 0; height: 1.4rem; outline: none; }
+.rail-knob { position: absolute; left: -1px; top: -0.9rem; bottom: -0.9rem; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000, 0 0 1.2rem var(--tone), 0 0 2.4rem var(--tone-glow); transition: top 0.15s var(--ease), bottom 0.15s var(--ease), width 0.15s, left 0.15s; }
+.rail-knob::before, .rail-knob::after { content: ''; position: absolute; left: 50%; width: 0.9rem; height: 0.9rem; margin-left: -0.45rem; background: #fff; }
+.rail-knob::before { top: -0.5rem; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.rail-knob::after { bottom: -0.5rem; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.rail:hover .rail-knob, .rail-handle:focus-visible .rail-knob, .rail.dragging .rail-knob { top: -1.3rem; bottom: -1.3rem; }
+.rail-handle:focus-visible .rail-knob { box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--accent), 0 0 2.4rem var(--tone-glow); }
+.rail.caught .rail-knob { width: 4px; left: -2px; }
+.rail-read { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; white-space: nowrap; pointer-events: none; }
+.rail-read b { font-size: 2.6rem; font-weight: 500; line-height: 1.15; letter-spacing: -0.03em; color: var(--tone); text-shadow: 0 0 2.4rem var(--tone-glow); transition: color 0.2s; }
+.rail-read small { color: var(--ink3); font-size: 1.2rem; }
+.rail-marks { position: absolute; left: 0; right: 0; top: 7.4rem; height: 1.4rem; pointer-events: none; }
+.rail-mark { position: absolute; top: 0; height: 100%; }
+.rail-mark i { position: absolute; left: -1px; top: -0.5rem; bottom: -0.5rem; width: 2px; background: var(--ink); opacity: 0.85; z-index: 1; }
+.rail-mark b, .rail-mark small { position: absolute; left: 0.6rem; white-space: nowrap; font-size: 1.1rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.rail-mark b { top: -2.1rem; color: var(--ink2); }
+.rail-mark small { top: 2.6rem; color: var(--ink3); }
+.rail-mark.low b { top: 4rem; } .rail-mark.low small { top: 5.5rem; }
+.rail-mark.low i { bottom: -2.4rem; }
+.rail-mark.end b, .rail-mark.end small { left: auto; right: 0.6rem; }
+.rail-mark.off i { opacity: 0.3; }
+.rail-scale { display: flex; justify-content: space-between; margin-top: 1.1rem; color: var(--ink3); font-size: 1.1rem; }
+.rail:has(.rail-mark.low) { padding-bottom: 5rem; }
+.rail:has(.rail-mark.low) .rail-scale { display: none; }
+#inc-raise-rail { margin: 0.6rem 0 1.6rem; }
+#inc-raise-rail .rail-mark i { top: 0; bottom: 0; width: 1px; left: 0; opacity: 0.5; }
+@media (max-width: 640px) {
+  .rail { padding-top: 6.8rem; }
+  .rail-handle, .rail-marks { top: 6.8rem; }
+  .rail-track { height: 2rem; } .rail-handle, .rail-marks { height: 2rem; }
+  .rail-read b { font-size: 2.2rem; }
+  #inc-raise-rail .rail-mark:nth-child(even) b { display: none; }
+}

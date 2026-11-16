@@ -40,7 +40,11 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   company was paid at the counter. Anything paid ahead in the last two months with no trip yet
   shows as paid toward a coming trip.
   Runway shows how many months your money covers at usual spending and on essentials alone.
-- **What if** has a tab for each scenario: **A home** and **A raise**.
+- **What if** has a tab for each scenario: **A home** and **A raise**. Each is driven by a ruled
+  track with a handle: drag the price or the raise and every figure follows. On the price track
+  the three limits are marked and the handle catches on them; green is what every limit allows,
+  amber what one refuses, red beyond. Arrow keys move it a step (Shift for ten), and a double
+  click goes back to the most you could buy.
 - **What if: a home.** The price three limits allow, and what any price does to
   the month: the **lender's** (housing up to 28% of gross income, housing plus debt payments up
   to 36%), **yours** (what your take-home carries while you keep the savings rate you choose,

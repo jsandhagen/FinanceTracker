@@ -7,6 +7,7 @@ import { cleanLink, downloadLink } from './links.js';
 import * as T from './tax.js';
 import * as N from './income.js';
 import * as H from './home.js';
+import { rail } from './rail.js';
 import * as P from './plaid.js';
 import * as native from './native.js';
 import * as fx from './fx.js';
@@ -1069,7 +1070,7 @@ function renderIncome(c) {
       kpiTile({ label: 'Take-home per year', value: '—' }), kpiTile({ label: 'Kept of gross', value: '—' })]);
     for (const id of ['inc-split', 'inc-va', 'inc-year-sum', 'inc-raise-bar']) $(id).innerHTML = id === 'inc-raise-bar' ? '' : empty('Enter your salary to see this.');
     $('inc-raise-table').innerHTML = ''; $('inc-raise-note').innerHTML = '<button class="link-btn" data-goto="salary">Enter your salary</button> to try a raise.'; $('inc-year-legend').innerHTML = '';
-    for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear']) $(id).hidden = true;
+    for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear', 'inc-raise-rail']) $(id).hidden = true;
     for (const id of ['inc-split-meta', 'inc-raise-meta', 'inc-year-meta', 'inc-va-meta']) $(id).textContent = '';
     fill('inc-raise', '');
     charts['inc-year-chart']?.destroy(); delete charts['inc-year-chart'];
@@ -1134,7 +1135,14 @@ function renderIncome(c) {
   const pctNow = hasRaise ? (newSalary / salary - 1) * 100 : null;
   for (const b of $('inc-raise-picks').children) b.classList.toggle('on', pctNow != null && Math.abs(pctNow - Number(b.dataset.pick)) < 0.005);
   $('inc-raise-clear').hidden = !hasRaise;
-  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'pick a raise, or type one';
+  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'drag, pick or type a raise';
+  $('inc-raise-rail').hidden = false;
+  raiseRail.set({
+    min: 0, max: 30, step: 0.5, value: Math.max(0, Math.min(30, pctNow || 0)), scale: ['0%', '30%'],
+    marks: [3, 5, 10, 15, 20, 25].map(v => ({ v, label: `${v}%` })), zones: [], tone: hasRaise && pctNow > 0 ? 'ok' : hasRaise ? 'over' : '',
+    readout: hasRaise ? `<b>${pctNow > 0 ? '+' : '−'}${tidyNum(Math.abs(pctNow))}%</b><small>${money0(newSalary)} · ${signed(then.per.net - now.per.net)} a paycheck</small>` : '<b>No raise</b><small>drag to try one</small>',
+    label: 'Raise, as a percentage', text: hasRaise ? `${tidyNum(pctNow)} percent, ${money0(newSalary)}` : 'no raise',
+  });
 
   const spend = N.monthlySpending(c.allOps, through), spendYr = spend.monthly * 12;
   const share = Math.max(0, Math.min(100, Number(cfg.saveShare ?? 100))) / 100;
@@ -1242,6 +1250,13 @@ function renderIncome(c) {
     ${y.vaTaxable > 17000 ? `Everything past ${money0(17000)} is in the top band, so ${hasRaise ? `the raise adds <b>${money0(t.virginia - y.virginia)}</b> of Virginia tax, ${band(0.0575)} of its taxable part` : `a raise is taxed ${band(0.0575)} by Virginia on every taxable dollar`}.` : ''}
     ${rates.calibrated && rates.fit && rates.taxScale < 0.9995 ? `Scaled to ${pct(rates.taxScale)} of the schedule, to match your take-home.` : ''}</p>`;
 }
+
+// The raise, as a handle on a ruled track from nothing to 30%.
+const raiseRail = rail($('inc-raise-rail'), {
+  onInput: v => { raiseMode = 'pct'; incDraft = { ...(incDraft || incSaved()), raise: v > 0 ? { mode: 'pct', value: v } : null }; renderIncome(CTX); },
+  onChange: () => saveIncome(incDraft || incSaved()),
+  onReset: () => saveIncome({ ...incSaved(), raise: null }),
+});
 
 // Reads the form into a config. `raiseMode` is how the one raise box is read: a
 // percentage, dollars a year, or the new salary. Until it is chosen it is the
@@ -1550,6 +1565,7 @@ function renderHome(c) {
     yours: a.rateThen >= you.floor - 1e-4,
     funds: L.cash > 0 && a.short < 1,
   };
+  homeRailSet({ L, a, price, ok, co, picked: !!cfg.price });
   const tag = (good, yes = 'fits', no = 'over') => `<span class="tag ${good ? 'ok' : 'over'}">${good ? yes : no}</span>`;
 
   setKpis('home-kpis', [
@@ -1633,6 +1649,35 @@ function renderHome(c) {
     </div>`;
 
   $('home-foot').textContent = `An estimate, not a pre-approval. The lender's limit uses the common conventional ratios (${pct(H.FRONT)} and ${pct(H.BACK)}); lenders vary, and many go higher with strong credit. Rates, property tax and insurance are the figures you enter; nothing is looked up. The savings rate here is your take-home pay against your average spending, loan payments included: the same measure as under A raise. Overview's is what actually came in and went out in the period. The mortgage interest deduction is not modelled: with the standard deduction it rarely changes the tax. A co-borrower is fully liable for the whole loan, whatever split you agree between you.`;
+}
+
+// The price, as a handle on a ruled track. The three limits are marked on it
+// and the handle catches on each; the stretch every limit allows is green, the
+// stretch one of them refuses amber, and past that red.
+const homeRail = rail($('home-rail'), {
+  onInput: v => { homeDraft = { ...(homeDraft || homeSaved()), price: v || null }; renderHome(CTX); },
+  onChange: () => saveHome(homeDraft || homeSaved()),
+  onReset: () => saveHome({ ...homeSaved(), price: null }),
+});
+const shortMoney = v => (v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 2 : 0)}M` : `$${Math.round(v / 1000)}k`);
+function homeRailSet({ L, a, price, ok, co, picked }) {
+  const marks = [['Lender', L.lender.price], ['Yours', L.yours.price], ['Cash', L.funds.price]]
+    .filter(m => m[1] != null && isFinite(m[1])).map(([label, v]) => ({ v, label, sub: shortMoney(Math.floor(v / 1000) * 1000), snap: Math.floor(v / 1000) * 1000 }));
+  const vs = marks.map(m => m.v).sort((x, y) => x - y);
+  // The scale runs a little past the limits that are near each other; one far
+  // beyond the rest is pinned to the end instead of flattening the others.
+  const reach = vs.filter(v => v <= (vs[0] || 0) * 2.2).pop() || 300000;
+  const max = Math.ceil(Math.max(reach * 1.2, price, 100000) / 50000) * 50000;
+  const z = [0, ...vs.filter(v => v < max), max];
+  const tests = [ok.lender, ok.yours, ok.funds || !(L.cash > 0)], broken = tests.filter(x => !x).length;
+  homeRail.set({
+    min: 0, max, step: 1000, value: Math.min(price, max), marks, scale: ['$0', shortMoney(max)],
+    zones: z.slice(1).map((to, i) => ({ from: z[i], to, tone: i === 0 ? 'ok' : i === 1 ? 'near' : 'over' })),
+    tone: !broken ? 'ok' : broken === 1 ? 'near' : 'over',
+    readout: `<b>${money0(price)}</b><small>${money0(co.on ? a.mine : a.owning)} a month${co.on ? ', your part' : ''}${picked ? '' : ' · the most you could buy'}</small>`,
+    label: 'Price', text: `${money0(price)}, ${broken ? `over ${broken} limit${broken === 1 ? '' : 's'}` : 'fits every limit'}`,
+  });
+  $('home-rail-meta').textContent = isPhone() ? 'drag · double-tap for the most' : 'drag, or ← → · double-click for the most you could buy';
 }
 
 // The forms as they stand. Blank fields go back to what is read from the data
