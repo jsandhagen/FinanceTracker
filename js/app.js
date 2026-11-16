@@ -535,16 +535,17 @@ function barRows(items, total, extra = () => ({})) {
   }).join('');
 }
 
+// Every time a regular charge or deposit is expected in the 30 days after the
+// data ends: a weekly one is there four times, not once.
 function upcoming() {
-  const asOf = DATA_LAST;
-  return SCHED.filter(x => x.active && x.next <= asOf + 30 * DAY).sort((a, b) => a.next - b.next);
+  return I.expected(SCHED, DATA_LAST, 30);
 }
-function upcomingRow(x) {
-  const asOf = DATA_LAST, inDays = Math.round((x.next - asOf) / DAY), inc = x.s.direction === 'income';
-  return `<div class="up-row link" data-stream="${x.idx}">
-    <span class="up-date">${shortDate(x.next)}</span>
-    <span class="up-name">${esc(x.s.merchant)}<small>${x.s.frequency} · ${inDays <= 0 ? 'due now' : `in ${inDays}d`}</small></span>
-    <span class="amt ${inc ? 'pos' : ''}">${inc ? '+' : '−'}$${fmt(x.amount)}</span>
+function upcomingRow(e) {
+  const inDays = Math.round((e.ts - DATA_LAST) / DAY), inc = e.amount > 0;
+  return `<div class="up-row link" data-stream="${e.idx}">
+    <span class="up-date">${shortDate(e.ts)}</span>
+    <span class="up-name">${esc(e.name)}<small>${SCHED[e.idx].s.frequency} · ${inDays <= 0 ? 'due now' : `in ${inDays}d`}</small></span>
+    <span class="amt ${inc ? 'pos' : ''}">${inc ? '+' : '−'}$${fmt(e.amount)}</span>
   </div>`;
 }
 
@@ -1298,11 +1299,11 @@ incomeView.addEventListener('click', ev => {
 function renderRecurring() {
   const live = SCHED.filter(x => x.active);
   const out = live.filter(x => x.s.direction === 'expense'), inc = live.filter(x => x.s.direction === 'income');
-  const soon = upcoming(), due = soon.filter(x => x.s.direction === 'expense');
+  const soon = upcoming(), due = soon.filter(e => e.amount < 0);
   setKpis('rec-kpis', [
     kpiTile({ label: 'Committed per month', value: money0(out.reduce((s, x) => s + x.monthly, 0)), sub: `${out.length} active charges` }),
     kpiTile({ label: 'Recurring income', value: money0(inc.reduce((s, x) => s + x.monthly, 0)), tone: 'pos', sub: `${inc.length} source${inc.length === 1 ? '' : 's'} per month` }),
-    kpiTile({ label: 'Due in 30 days', value: money0(due.reduce((s, x) => s + x.amount, 0)), sub: `${due.length} charge${due.length === 1 ? '' : 's'} expected` }),
+    kpiTile({ label: 'Due in 30 days', value: money0(-due.reduce((s, e) => s + e.amount, 0)), sub: `${due.length} charge${due.length === 1 ? '' : 's'} expected` }),
     kpiTile({ label: 'Streams', value: `${live.length}<small> / ${SCHED.length}</small>`, sub: 'active / detected' }),
   ]);
 

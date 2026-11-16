@@ -42,7 +42,8 @@ const rent = streams.find(x => x.merchant.startsWith('RENT'));
 const sch = I.schedule(rent, asOf);
 assert.ok(sch.active && sch.interval >= 28 && sch.interval <= 31);
 assert.ok(Math.abs(sch.next - A.localTs('2026-07-01')) <= 2 * I.DAY, 'next rent date');
-close(sch.monthly, 1725 * 30.44 / sch.interval, 'rent per month');
+close(sch.monthly, 1725, 'rent per month: a monthly bill is paid once a month');
+close(I.perMonth(30), 1, 'monthly'); close(I.perMonth(14), 26.0893 / 12, 'bi-weekly', 1e-4); close(I.perMonth(7), 52.1786 / 12, 'weekly', 1e-4); close(I.perMonth(91), 0.3345, 'quarterly', 1e-4);
 assert.equal(I.schedule(rent, asOf + 200 * I.DAY).active, false, 'a stream that stopped is lapsed');
 assert.equal(I.parseFmtDate(A.fmtDate('2026-03-09')), A.localTs('2026-03-09'));
 
@@ -59,7 +60,7 @@ const payStream = { merchant: 'ACME PAYROLL', direction: 'income',
 assert.ok(payStream.avg_amount > 3650, 'the all-time mean is what the bonus skews');
 const paySch = I.schedule(payStream, A.localTs('2026-11-05'));
 assert.equal(paySch.amount, 3400, 'expected paycheck ignores the bonus');
-close(paySch.monthly, 3400 * 30.44 / 14, 'paycheck per month');
+close(paySch.monthly, 3400 * 365.25 / 12 / 14, 'paycheck per month');
 const raised = { ...payStream, transactions: [...pay.slice(0, -3), ...pay.slice(-3).map(t => ({ ...t, amount: 3600 }))] };
 assert.equal(I.schedule(raised, A.localTs('2026-11-05')).amount, 3600, 'a raise shows up by its third paycheck');
 

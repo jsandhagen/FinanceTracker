@@ -122,6 +122,11 @@ export function withoutBonus(txns, bonusMonth) {
   return txns.filter(t => !(month(t) === bonusMonth && usual > 0 && Math.abs(t.amount) > usual * 1.25));
 }
 
+// How many times a month something that comes every `interval` days is paid. A
+// monthly bill is paid once, however long the months between its payments
+// were; other cadences are a year's worth of them over twelve.
+export const perMonth = interval => (interval >= 27 && interval <= 32 ? 1 : 365.25 / 12 / interval);
+
 // When a recurring stream is next expected, and whether it still looks alive.
 // asOf is the last day of data, not today: exports are often a few weeks old.
 // `pay` marks the stream as the salaried paycheck ({ bonusMonth }, or null
@@ -156,7 +161,7 @@ export function schedule(stream, asOf, pay = null) {
   const amount = round2(pay ? lastAmt : median(amounts.slice(-5)));
   return {
     interval, last, next, active, amount,
-    monthly: round2(amount * 30.44 / interval),
+    monthly: round2(amount * perMonth(interval)),
     lastAmt, typical,
     priceChange: typical > 0 && Math.abs(lastAmt - typical) / typical > 0.05 && amounts.length >= 4
       && stream.direction === 'expense' && interval >= 25 ? round2(lastAmt - typical) : 0,
