@@ -1522,15 +1522,13 @@ function renderHome(c) {
     if (el.type === 'checkbox') el.checked = !!v;
     else if (document.activeElement !== el) el.value = v == null || (v === 0 && el.placeholder) ? '' : v;
   }
+  for (const b of $('home-who-seg').children) b.classList.toggle('active', (b.dataset.coOn === '1') === co.on);
   for (const b of $('home-split').children) b.classList.toggle('active', b.dataset.split === co.split);
   $('home-co').hidden = !co.on;
   $('home-share-label').hidden = $('home-share-box').hidden = co.split !== 'custom';
   $('home-need').hidden = salary > 0;
-  $('home-grid').hidden = $('home-foot').hidden = !(salary > 0);
-  if (!(salary > 0)) {
-    setKpis('home-kpis', ['You could buy up to', "The lender's limit", 'Your limit', 'The cash limit'].map(label => kpiTile({ label, value: '—' })));
-    return;
-  }
+  $('home-grid').hidden = $('home-foot').hidden = $('home-bar').hidden = !(salary > 0);
+  if (!(salary > 0)) return;
 
   // You: pay from Salary, spending and debts from the data.
   const pay = N.detectPaycheck(SCHED);
@@ -1556,15 +1554,16 @@ function renderHome(c) {
   const a = H.at(price, you, cfg, rent);
   $('home-price').placeholder = fmt0(best);
 
-  const share = pct(L.share), theirShare = pct(1 - L.share);
+  const share = pct(L.share);
   const priceOf = v => (v == null ? '—' : isFinite(v) ? money0(Math.floor(v / 1000) * 1000) : 'No limit');
   const ratePct = r => (r == null ? '—' : `${(r * 100).toFixed(r > -0.1 && r < 0.1 ? 1 : 0)}%`);
-  const byName = { lender: "the lender's limit", yours: 'your savings rate', funds: 'the cash going in' };
+  const byName = { lender: "the lender's limit", yours: 'your budget', funds: 'the cash going in' };
   const ok = {
     lender: a.front <= H.FRONT + 1e-4 && a.back <= H.BACK + 1e-4,
     yours: a.rateThen >= you.floor - 1e-4,
     funds: L.cash > 0 && a.short < 1,
   };
+  const broken = [ok.lender, ok.yours, ok.funds || !(L.cash > 0)].filter(x => !x).length;
   homeRailSet({ L, a, price, ok, co, picked: !!cfg.price });
   homeShown = price;
   const liquid = BALANCE.length ? BALANCE[BALANCE.length - 1].net : null;
@@ -1574,16 +1573,27 @@ function renderHome(c) {
   const snap = { price, mine, cash: L.cash, income: co.on ? co.income : 0, rate: cfg.rate, years: cfg.years, co: co.on };
   if (!homePin) homePin = snap;
   const vs = homeVs(snap, homePin);
-  const tag = (good, yes = 'fits', no = 'over') => `<span class="tag ${good ? 'ok' : 'over'}">${good ? yes : no}</span>`;
 
-  setKpis('home-kpis', [
-    kpiTile({ label: co.on ? 'Together you could buy up to' : 'You could buy up to', value: money0(best), tone: best > 0 ? 'pos' : 'neg', sub: `held by ${byName[L.by]}` }),
-    kpiTile({ label: "The lender's limit", value: priceOf(L.lender.price), sub: `${money0(L.lender.budget)} a month for housing` }),
-    kpiTile({ label: 'Your limit', value: priceOf(L.yours.price), sub: `keeps ${pct(you.floor)} of your take-home` }),
-    kpiTile({ label: 'The cash limit', value: priceOf(L.funds.price), sub: L.cash > 0 ? `${money0(L.cash)} in${co.on ? ' between you' : ''}` : 'enter the cash going in' }),
-  ]);
+  // ── 1. Who is buying ──
+  const cell = (k, v, sub = '') => `<div><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  $('home-who-meta').textContent = co.on ? `${money0(L.income * 12)} a year between you` : `${money0(you.gross)} a year`;
+  $('home-you').innerHTML = cell('Gross pay', money0(year.gross), `a year${proj.bonusGross > 0 ? ', with bonus' : ''}${withRaise ? ', after the raise' : ''}`)
+    + cell('Take-home', money0(you.takeHome), 'a month')
+    + cell('Other spending', money0(spend.monthly), `a month, last ${spend.months} month${spend.months === 1 ? '' : 's'}`);
+  $('home-raise-row').hidden = !hasRaise;
+  $('home-raise-label').textContent = hasRaise ? `Count the raise from What if / A raise (${money0(salary)} → ${money0(raised)})` : '';
+  $('home-who-note').innerHTML = (cfg.debts == null ? (debtSeen > 0 ? `Debt payments are your loan payments in the data, ${money0(debtSeen)} a month; add what it cannot see, such as a card's minimum. ` : 'No loan payments were found in your data; add any, such as a card’s minimum. ') : '')
+    + (cfg.rent == null ? (rentSeen > 0 ? `Housing now is what is filed under Housing, ${money0(rentSeen)} a month. ` : 'Nothing is filed under Housing, so type what you pay now to compare. ') : '')
+    + (co.on ? `${co.split === 'income' ? `Split by income, you carry ${share} of the month.` : co.split === 'even' ? 'You each carry half of the month.' : `You carry ${share} of the month.`} A co-borrower is liable for the whole loan, whatever you agree between you.` : '');
 
-  // ── The month at this price ──
+  // ── 2–4. The step headers say what each step comes to ──
+  $('home-rail-meta').textContent = `the most you could buy is ${shortMoney(best)}`;
+  $('home-max').textContent = cfg.price ? `Use the most you could buy, ${money0(best)}` : 'This is the most you could buy';
+  $('home-max').disabled = !cfg.price;
+  $('home-cash-meta').textContent = `${money0(L.cash)}${co.on ? ' between you' : ''} · ${pct(a.downShare, a.downShare < 0.1 ? 1 : 0)} down`;
+  $('home-loan-meta').textContent = `${money0(a.loan)} borrowed`;
+
+  // ── The answer ──
   const parts = [
     { name: 'Principal + interest', v: a.pi, color: HOME.pi },
     { name: 'Property tax', v: a.tax, color: HOME.tax },
@@ -1593,72 +1603,68 @@ function renderHome(c) {
     { name: 'Upkeep', v: a.upkeep, color: HOME.upkeep },
   ];
   const cols = v => `<td class="num">${money0(v)}</td>${co.on ? `<td class="num">${money0(v * a.share)}</td><td class="num col-hide-sm dim">${money0(v * (1 - a.share))}</td>` : ''}`;
-  const cashCols = v => { const mine = a.cashUsed > 0 ? v * a.cashMine / a.cashUsed : v; return `<td class="num">${money0(v)}</td>${co.on ? `<td class="num">${money0(mine)}</td><td class="num col-hide-sm dim">${money0(v - mine)}</td>` : ''}`; };
+  const cashCols = v => { const m = a.cashUsed > 0 ? v * a.cashMine / a.cashUsed : v; return `<td class="num">${money0(v)}</td>${co.on ? `<td class="num">${money0(m)}</td><td class="num col-hide-sm dim">${money0(v - m)}</td>` : ''}`; };
   const line = (p, f = cols) => (p.v > 0.004 ? `<tr><td>${p.color ? `<span class="swatch" style="background:${p.color}"></span>` : ''}${p.name}</td>${f(p.v)}</tr>` : '');
-  const head = label => `<tr><th>${label}</th><th class="num">${co.on ? 'Together' : 'Amount'}</th>${co.on ? '<th class="num">You</th><th class="num col-hide-sm">Co-borrower</th>' : ''}</tr>`;
-  const all = ok.lender && ok.yours && ok.funds;
-  const fails = [!ok.funds && L.cash > 0 && `the cash is ${money0(a.short)} short of closing costs and ${pct(H.MIN_DOWN)} down`,
-    !ok.lender && `a lender would likely stop at ${priceOf(L.lender.price)}`,
-    !ok.yours && `your savings rate would fall to ${ratePct(a.rateThen)}, under the ${pct(you.floor)} you want to keep`].filter(Boolean);
-  $('home-at-title').textContent = `The month at ${money0(price)}`;
-  $('home-at-meta').textContent = cfg.price ? 'the price you entered' : 'the most the limits allow';
+  const head = label => `<tr><th>${label}</th><th class="num">${co.on ? 'Together' : 'Amount'}</th>${co.on ? '<th class="num">You</th><th class="num col-hide-sm">Them</th>' : ''}</tr>`;
+  const verdict = (state, name, said) => `<div class="home-verdict ${state}"><i>${state === 'ok' ? '✓' : state === 'no' ? '✕' : '·'}</i><span>${name}</span><b>${said}</b></div>`;
+  $('home-at-meta').textContent = `at ${money0(price)}`;
   $('home-at').innerHTML = price > 0 ? `<div class="inc-pad">
-      <div class="out-big">${money0(co.on ? a.mine : a.owning)}<small> a month${co.on ? `, your ${share}` : ''}</small></div>
+      <div class="out-big">${money0(mine)}<small> a month${co.on ? `, your ${share}` : ''}</small></div>
+      <p class="out-say">${co.on ? `They pay ${money0(a.theirs)}; ${money0(a.owning)} between you. ` : ''}Housing now is ${money0(rent)}, so ${a.change >= 0 ? `${money0(a.change)} more` : `${money0(-a.change)} less`} a month.</p>
       ${vs}
-      <p class="out-say">${co.on ? `of ${money0(a.owning)} between you. ` : ''}${money0(a.loan)} borrowed at ${tidyNum(cfg.rate)}% over ${cfg.years} years, with ${money0(a.down)} down (${pct(a.downShare, a.downShare < 0.1 ? 1 : 0)}).${a.pmi > 0 ? ` Under ${pct(H.PMI_UNDER)} down, so mortgage insurance is charged until the loan is paid down to 80% of the price.` : ''}</p>
+      <div class="home-verdicts">
+        ${verdict(ok.lender ? 'ok' : 'no', 'A lender', ok.lender ? `would lend: up to ${shortMoney(L.lender.price)}` : `stops at ${shortMoney(L.lender.price)}`)}
+        ${verdict(ok.yours ? 'ok' : 'no', 'Your budget', ok.yours ? `still saving ${ratePct(a.rateThen)}` : `saving falls to ${ratePct(a.rateThen)}`)}
+        ${verdict(!(L.cash > 0) ? 'unset' : ok.funds ? 'ok' : 'no', 'The cash', !(L.cash > 0) ? 'none entered yet' : ok.funds ? `${pct(a.downShare, a.downShare < 0.1 ? 1 : 0)} down${a.pmi > 0 ? ', with PMI' : ''}` : `${money0(a.short)} short`)}
+      </div>
       ${stackBar(parts, a.owning, 'What a month of owning is made of')}${stackLegend(parts, a.owning)}</div>
-    <div class="table-wrap"><table class="data"><thead>${head('A month')}</thead>
-      <tbody>${parts.slice(0, 5).map(p => line(p)).join('')}
-        <tr class="home-sub"><td>What a lender counts</td>${cols(a.housing)}</tr>
-        ${line(parts[5])}</tbody>
-      <tfoot><tr><td>Owning, a month</td>${cols(a.owning)}</tr></tfoot></table></div>
-    <div class="table-wrap"><table class="data"><thead>${head('To close')}</thead>
-      <tbody>${line({ name: 'Down payment', v: a.down }, cashCols)}${line({ name: 'Closing costs', v: Math.min(a.closing, a.cashUsed) }, cashCols)}</tbody>
-      <tfoot><tr><td>Cash used</td>${cashCols(a.cashUsed)}</tr></tfoot></table></div>
-    <p class="inc-note">${L.cash > 0 ? '' : '<b class="neg">No cash is entered, so this is all borrowed and the closing costs are unpaid.</b> Drag “Cash you put in” under Try it. '}${all ? `<b class="pos">${money0(price)} fits all three limits.</b>` : fails.length ? `<b class="neg">At ${money0(price)}, ${fails.join('; ')}.</b>` : ''}
-      Over the ${cfg.years} years the loan costs ${money0(a.interest)} in interest. ${money0(a.principal1)} of the first payment is principal: it stays yours as equity, though it counts as spent here.${a.spare > 0 ? ` ${money0(a.spare)} of the cash is not needed.` : ''}</p>`
-    : empty(L.cash > 0 ? 'Nothing fits the limits as they stand. Type a price to see what it would take.' : 'Enter the cash going in, or type a price.');
+    <details class="raise-more" id="home-more"${homeMoreOpen ? ' open' : ''}>
+      <summary>The full month, and the cash to close</summary>
+      <div class="table-wrap"><table class="data"><thead>${head('A month')}</thead>
+        <tbody>${parts.slice(0, 5).map(p => line(p)).join('')}
+          <tr class="home-sub"><td>What a lender counts</td>${cols(a.housing)}</tr>
+          ${line(parts[5])}</tbody>
+        <tfoot><tr><td>Owning, a month</td>${cols(a.owning)}</tr></tfoot></table></div>
+      <div class="table-wrap"><table class="data"><thead>${head('To close')}</thead>
+        <tbody>${line({ name: 'Down payment', v: a.down }, cashCols)}${line({ name: 'Closing costs', v: Math.min(a.closing, a.cashUsed) }, cashCols)}</tbody>
+        <tfoot><tr><td>Cash used</td>${cashCols(a.cashUsed)}</tr></tfoot></table></div>
+      <p class="inc-note">${money0(a.loan)} borrowed at ${tidyNum(cfg.rate)}% over ${cfg.years} years costs ${money0(a.interest)} in interest. ${money0(a.principal1)} of the first payment is principal: it stays yours as equity, though it counts as spent here.${a.pmi > 0 ? ` Under ${pct(H.PMI_UNDER)} down, mortgage insurance is charged until the loan is paid down to 80% of the price.` : ''}${a.spare > 0 ? ` ${money0(a.spare)} of the cash is not needed.` : ''}</p>
+    </details>`
+    : empty(L.cash > 0 ? 'Nothing fits the limits as they stand. Drag the price to see what it would take.' : 'Add the cash going in, or drag the price.');
+  const tone = !broken ? 'ok' : broken === 1 ? 'near' : 'over';
+  $('home-bar').innerHTML = `<span><b>${money0(mine)}</b> a month${co.on ? ', your part' : ''}<small>at ${money0(price)} · ${money0(L.cash)} in · ${tidyNum(cfg.rate)}%</small></span>
+    <span class="tag ${tone}">${broken ? `over ${broken} limit${broken === 1 ? '' : 's'}` : 'fits'}</span>`;
 
-  // ── Who is on the loan ──
-  const cell = (k, v, sub = '') => `<div><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  $('home-who-meta').textContent = co.on ? 'you and a co-borrower' : 'you alone';
-  $('home-you').innerHTML = cell('Your gross pay', money0(year.gross), `a year${proj.bonusGross > 0 ? ', with bonus' : ''}${withRaise ? ', after the raise' : ''}`)
-    + cell('Your take-home', money0(you.takeHome), 'a month')
-    + cell('Your other spending', money0(spend.monthly), `a month, last ${spend.months} month${spend.months === 1 ? '' : 's'}`);
-  $('home-raise-row').hidden = !hasRaise;
-  $('home-raise-label').textContent = hasRaise ? `Count the raise from What if / A raise (${money0(salary)} → ${money0(raised)})` : '';
-  $('home-who-note').innerHTML = `Pay comes from <button class="link-btn" data-goto="salary">Salary</button>. `
-    + (cfg.debts == null ? (debtSeen > 0 ? `Your loan payments are read from the data: ${money0(debtSeen)} a month. ` : 'No loan payments were found in your data. ') + 'Type a figure to include what it cannot see, such as a card’s minimum payment. ' : '')
-    + (cfg.rent == null ? (rentSeen > 0 ? `Housing now is what is filed under Housing: ${money0(rentSeen)} a month over the last three months. ` : 'Nothing is filed under Housing, so type what you pay now to compare. ') : '')
-    + (co.on ? `A co-borrower is on the loan with you: a lender counts both incomes and both sets of debts in full, whoever pays what. ${co.split === 'income' ? `Split by income, you carry ${share} of the month and they carry ${theirShare}.` : co.split === 'even' ? 'You each carry half of the month.' : `You carry ${share} of the month.`}` : '');
-
-  // ── The three limits ──
+  // ── Why: the three limits ──
+  const tag = good => `<span class="tag ${good ? 'ok' : 'over'}">${good ? 'fits' : 'over'}</span>`;
   const block = (name, limit, good, say, rows) => `<div class="home-limit">
       <div class="home-limit-head"><span>${name}</span><b>${limit}</b>${good == null ? '' : tag(good)}</div>
       <p class="out-say">${say}</p>${rows.join('')}</div>`;
   const row = (label, v, cls = '') => `<div class="sum-row ${cls}"><span>${label}</span><b>${v}</b></div>`;
   const left = liquid == null ? null : liquid - a.cashMine;
   const monthsOf = (v, per) => (per > 0 && v > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '0');
-  $('home-limits-meta').textContent = `at ${money0(price)}`;
-  $('home-limits').innerHTML = `<div class="inc-pad">
-    ${block("The lender's", priceOf(L.lender.price), price > 0 ? ok.lender : null,
+  $('home-limits-meta').textContent = `the most is held by ${byName[L.by]}`;
+  $('home-limits').innerHTML = `<div class="inc-pad home-limits-grid">
+    ${block("A lender's", priceOf(L.lender.price), price > 0 ? ok.lender : null,
       `Housing up to ${pct(H.FRONT)} of ${co.on ? 'your combined' : 'your'} ${money0(L.income)} gross a month, and housing plus debt payments up to ${pct(H.BACK)}. Here the ${L.lender.by === 'back' ? 'debt' : 'housing'} test is the tighter one${alone ? `. Alone you would qualify for ${priceOf(alone.lender.price)}` : ''}.`,
       [row('Housing, of gross income', `${money0(a.housing)} · ${ratePct(a.front)}`),
         row(`Housing + ${money0(L.debts)} of debt payments`, `${money0(a.housing + L.debts)} · ${ratePct(a.back)}`)])}
-    ${block('Yours', priceOf(L.yours.price), price > 0 ? ok.yours : null,
+    ${block('Your budget', priceOf(L.yours.price), price > 0 ? ok.yours : null,
       `What your take-home can carry of ${co.on ? `your ${share} of ` : ''}owning, upkeep included, after your other spending and debt payments, while you keep ${pct(you.floor)} of it${alone ? `. Alone it would be ${priceOf(alone.yours.price)}` : ''}.`,
       [row('Housing now', money0(rent)),
         row(co.on ? `Your ${share} of owning` : 'Owning', `${money0(a.mine)} · ${a.change >= 0 ? '+' : '−'}${money0(Math.abs(a.change))}`),
         row('Your savings rate', `${ratePct(a.rateNow)} → <span class="${ok.yours ? '' : 'neg'}">${ratePct(a.rateThen)}</span>`)])}
     ${block('The cash', priceOf(L.funds.price), price > 0 && L.cash > 0 ? ok.funds : null,
-      L.cash > 0 ? `${money0(L.cash)} going in${co.on ? ` (${money0(cfg.cash)} yours, ${money0(co.cash)} theirs)` : ''} has to cover closing costs and at least ${pct(H.MIN_DOWN)} down.` : 'Enter the cash going in to see how far it reaches.',
+      L.cash > 0 ? `${money0(L.cash)} going in${co.on ? ` (${money0(cfg.cash)} yours, ${money0(co.cash)} theirs)` : ''} has to cover closing costs and at least ${pct(H.MIN_DOWN)} down.` : 'Add the cash going in to see how far it reaches.',
       [row('Needed at this price, at the least', money0(a.needed)),
-        ...(left == null ? [] : [row('Your checking + savings − card, after your part', `${money0(liquid)} → <span class="${left < 0 ? 'neg' : ''}">${money0(left)}</span>`),
-          row('Runway left, at your new monthly spending', `${monthsOf(left, you.other + a.mine)} months`)])])}
+        ...(left == null ? [] : [row('Your bank, after your part', `${money0(liquid)} → <span class="${left < 0 ? 'neg' : ''}">${money0(left)}</span>`),
+          row('Runway left', `${monthsOf(left, you.other + a.mine)} months`)])])}
     </div>`;
 
-  $('home-foot').textContent = `An estimate, not a pre-approval. The lender's limit uses the common conventional ratios (${pct(H.FRONT)} and ${pct(H.BACK)}); lenders vary, and many go higher with strong credit. Rates, property tax and insurance are the figures you enter; nothing is looked up. The savings rate here is your take-home pay against your average spending, loan payments included: the same measure as under A raise. Overview's is what actually came in and went out in the period. The mortgage interest deduction is not modelled: with the standard deduction it rarely changes the tax. A co-borrower is fully liable for the whole loan, whatever split you agree between you.`;
+  $('home-foot').textContent = `An estimate, not a pre-approval. The lender's limit uses the common conventional ratios (${pct(H.FRONT)} and ${pct(H.BACK)}); lenders vary, and many go higher with strong credit. Rates, property tax and insurance are the figures you enter; nothing is looked up. The savings rate here is your take-home pay against your average spending, loan payments included: the same measure as under A raise. Overview's is what actually came in and went out in the period. The mortgage interest deduction is not modelled: with the standard deduction it rarely changes the tax.`;
 }
+let homeMoreOpen = false;
+document.addEventListener('toggle', ev => { if (ev.target.id === 'home-more') homeMoreOpen = ev.target.open; }, true);
 
 // The price, as a handle on a ruled track. The three limits are marked on it
 // and the handle catches on each; the stretch every limit allows is green, the
@@ -1686,7 +1692,6 @@ function homeRailSet({ L, a, price, ok, co, picked }) {
     readout: `<b>${money0(price)}</b><small>${money0(co.on ? a.mine : a.owning)} a month${co.on ? ', your part' : ''}${picked ? '' : ' · the most you could buy'}</small>`,
     label: 'Price', text: `${money0(price)}, ${broken ? `over ${broken} limit${broken === 1 ? '' : 's'}` : 'fits every limit'}`,
   });
-  $('home-rail-meta').textContent = isPhone() ? 'drag · double-tap for the most' : 'drag, or ← → · double-click for the most you could buy';
 }
 
 // ── Try it: the levers ──
@@ -1729,7 +1734,6 @@ function homeLeversSet({ cfg, co, you, L, a, price, liquid }) {
   $('lv-cash-v').innerHTML = `${money0(cfg.cash)}<small>${pct(down(L.cash), 1)} down${co.on ? ' together' : ''}</small>`;
 
   for (const el of homeView.querySelectorAll('.lever-co')) el.hidden = !co.on;
-  $('lv-co').textContent = co.on ? 'Buy alone' : '+ Add a co-borrower';
   if (co.on) {
     const coMax = roundUp(Math.max(100000, saved.co.cash * 2, need20 - cfg.cash + 10000), 25000);
     lvCoCash.set({
@@ -1766,12 +1770,21 @@ $('lv-years').addEventListener('click', ev => {
   if (d.price == null) d.price = homeShown;
   saveHome({ ...d, years: Number(b.dataset.years) });
 });
-$('lv-co').addEventListener('click', () => {
-  const d = structuredClone(homeSaved());
+$('home-who-seg').addEventListener('click', ev => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  const d = structuredClone(homeSaved()), on = b.dataset.coOn === '1';
+  if (d.co.on === on) return;
   if (d.price == null) d.price = homeShown;
-  d.co.on = !d.co.on;
+  d.co.on = on;
   saveHome(d);
 });
+$('home-max').addEventListener('click', () => saveHome({ ...homeSaved(), price: null }));
+// On a phone the answer is a bar above the tabs while the answer itself is out
+// of sight; a tap brings it into view.
+$('home-bar').addEventListener('click', () => homeView.querySelector('.home-answer').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+new IntersectionObserver(([e]) => $('home-bar').classList.toggle('away', e.isIntersecting), { threshold: 0.35 })
+  .observe(homeView.querySelector('.home-answer'));
 
 // What changed since the pinned scenario, as a line under the payment.
 function homeVs(now, pin) {

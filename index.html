@@ -276,112 +276,119 @@
         </div>
       </section>
 
-      <!-- What if / A home. The price three limits allow, alone or with a co-borrower -->
+      <!-- What if / A home. Set up in order on the left (who is buying, the home,
+           the cash going in, the loan); the answer stays in view on the right,
+           and on a phone in a bar above the tabs. Exploring and the reasons
+           come after. -->
       <section class="view" data-view="home" hidden>
-        <div class="kpi-row" id="home-kpis"></div>
         <div class="empty" id="home-need" hidden>The lender's limit works from gross pay, and yours from take-home. <button class="link-btn" data-goto="salary">Enter your salary</button> to see what you could buy.</div>
         <div class="grid" id="home-grid">
-          <div class="panel c12" id="home-rail-card">
-            <div class="panel-head"><span class="panel-title">Price</span><span class="panel-meta" id="home-rail-meta"></span></div>
-            <div class="panel-body"><div id="home-rail"></div></div>
-          </div>
-          <div class="panel c5" id="home-levers-card">
-            <div class="panel-head"><span class="panel-title">Try it</span><span class="panel-meta">drag any of these</span></div>
-            <div class="panel-body">
-              <div class="lever"><div class="lever-head"><span>Cash you put in</span><b id="lv-cash-v"></b></div><div id="lv-cash"></div></div>
-              <div class="lever lever-co"><div class="lever-head"><span>Cash they put in</span><b id="lv-co-cash-v"></b></div><div id="lv-co-cash"></div></div>
-              <div class="lever lever-co"><div class="lever-head"><span>Their income, a year</span><b id="lv-co-income-v"></b></div><div id="lv-co-income"></div></div>
-              <div class="lever"><div class="lever-head"><span>Interest rate</span><b id="lv-rate-v"></b></div><div id="lv-rate"></div></div>
-              <div class="lever-foot">
-                <div class="seg" id="lv-years" role="group" aria-label="Term"><button type="button" data-years="15">15 yr</button><button type="button" data-years="20">20 yr</button><button type="button" data-years="30">30 yr</button></div>
-                <button type="button" class="btn small" id="lv-co"></button>
+          <div class="c7 home-steps">
+
+            <div class="panel home-step">
+              <div class="panel-head"><span class="panel-title">Who is buying</span><span class="panel-meta" id="home-who-meta"></span></div>
+              <div class="panel-body">
+                <div class="seg home-who-seg" id="home-who-seg" role="group" aria-label="Who is buying">
+                  <button type="button" data-co-on="0">Just me</button><button type="button" data-co-on="1">With a co-borrower</button>
+                </div>
+                <div class="home-sub-head">You <small>from <button class="link-btn" data-goto="salary">Salary</button> and your spending</small></div>
+                <div class="pay-sum" id="home-you"></div>
+                <form class="inc-form" autocomplete="off">
+                  <label for="home-debts">Your debt payments, a month</label>
+                  <div class="input-affix"><span>$</span><input id="home-debts" data-home="debts" type="number" inputmode="decimal" min="0" step="25" /></div>
+                  <label for="home-rent">Housing costs you now, a month</label>
+                  <div class="input-affix"><span>$</span><input id="home-rent" data-home="rent" type="number" inputmode="decimal" min="0" step="25" /></div>
+                </form>
+                <label class="check home-check" id="home-raise-row" hidden><input type="checkbox" id="home-raise" data-home="raise" /> <span id="home-raise-label">Count the raise</span></label>
+                <div id="home-co" hidden>
+                  <div class="home-sub-head">Your co-borrower <small>a lender counts their income and debts in full</small></div>
+                  <div class="lever"><div class="lever-head"><span>Their gross income, a year</span><b id="lv-co-income-v"></b></div><div id="lv-co-income"></div></div>
+                  <form class="inc-form" autocomplete="off">
+                    <label for="home-co-debts">Their debt payments, a month</label>
+                    <div class="input-affix"><span>$</span><input id="home-co-debts" data-co="debts" type="number" inputmode="decimal" min="0" step="25" placeholder="0" /></div>
+                    <label id="home-split-label">Split the monthly cost</label>
+                    <div class="seg" id="home-split" role="group" aria-labelledby="home-split-label">
+                      <button type="button" data-split="income">By income</button><button type="button" data-split="even">Evenly</button><button type="button" data-split="custom">Set it</button>
+                    </div>
+                    <label for="home-co-share" id="home-share-label">Your share</label>
+                    <div class="input-affix" id="home-share-box"><input id="home-co-share" data-co="share" type="number" inputmode="decimal" min="0" max="100" step="5" /><span class="suffix">%</span></div>
+                  </form>
+                </div>
+                <div class="note" id="home-who-note"></div>
+              </div>
+            </div>
+
+            <div class="panel home-step" id="home-rail-card">
+              <div class="panel-head"><span class="panel-title">The home</span><span class="panel-meta" id="home-rail-meta"></span></div>
+              <div class="panel-body">
+                <div id="home-rail"></div>
+                <div class="home-price-row">
+                  <div class="input-affix"><span>$</span><input id="home-price" data-home="price" type="number" inputmode="decimal" min="0" step="5000" aria-label="Price" /></div>
+                  <button type="button" class="btn small" id="home-max"></button>
+                </div>
+                <form class="inc-form" autocomplete="off">
+                  <label for="home-tax">Property tax, a year</label>
+                  <div class="input-affix"><input id="home-tax" data-home="taxRate" type="number" inputmode="decimal" min="0" max="10" step="0.05" /><span class="suffix">% of price</span></div>
+                  <label for="home-ins">Home insurance, a year</label>
+                  <div class="input-affix"><span>$</span><input id="home-ins" data-home="insurance" type="number" inputmode="decimal" min="0" step="50" /></div>
+                  <label for="home-hoa">HOA or condo fee, a month</label>
+                  <div class="input-affix"><span>$</span><input id="home-hoa" data-home="hoa" type="number" inputmode="decimal" min="0" step="10" placeholder="0" /></div>
+                </form>
+              </div>
+            </div>
+
+            <div class="panel home-step">
+              <div class="panel-head"><span class="panel-title">Cash going in</span><span class="panel-meta" id="home-cash-meta"></span></div>
+              <div class="panel-body">
+                <div class="lever"><div class="lever-head"><span>Cash you put in</span><b id="lv-cash-v"></b></div><div id="lv-cash"></div></div>
+                <div class="lever lever-co"><div class="lever-head"><span>Cash they put in</span><b id="lv-co-cash-v"></b></div><div id="lv-co-cash"></div></div>
+              </div>
+            </div>
+
+            <div class="panel home-step">
+              <div class="panel-head"><span class="panel-title">The loan</span><span class="panel-meta" id="home-loan-meta"></span></div>
+              <div class="panel-body">
+                <div class="lever"><div class="lever-head"><span>Interest rate</span><b id="lv-rate-v"></b></div><div id="lv-rate"></div></div>
+                <div class="lever-foot">
+                  <span class="lever-label">Term</span>
+                  <div class="seg" id="lv-years" role="group" aria-label="Term"><button type="button" data-years="15">15 years</button><button type="button" data-years="20">20</button><button type="button" data-years="30">30</button></div>
+                </div>
+                <details class="raise-more">
+                  <summary>Closing costs, mortgage insurance, upkeep, savings floor</summary>
+                  <form class="inc-form" autocomplete="off">
+                    <label for="home-closing">Closing costs</label>
+                    <div class="input-affix"><input id="home-closing" data-home="closing" type="number" inputmode="decimal" min="0" max="15" step="0.25" /><span class="suffix">% of price</span></div>
+                    <label for="home-pmi">Mortgage insurance, a year</label>
+                    <div class="input-affix"><input id="home-pmi" data-home="pmiRate" type="number" inputmode="decimal" min="0" max="5" step="0.05" /><span class="suffix">% of loan</span></div>
+                    <label for="home-upkeep">Upkeep, a year</label>
+                    <div class="input-affix"><input id="home-upkeep" data-home="upkeep" type="number" inputmode="decimal" min="0" max="10" step="0.25" /><span class="suffix">% of price</span></div>
+                    <label for="home-floor">Keep your savings rate at least</label>
+                    <div class="input-affix"><input id="home-floor" data-home="floor" type="number" inputmode="numeric" min="0" max="90" step="5" /><span class="suffix">%</span></div>
+                  </form>
+                </details>
               </div>
             </div>
           </div>
-          <div class="panel c7">
-            <div class="panel-head"><span class="panel-title" id="home-at-title">The month</span><span class="panel-meta" id="home-at-meta"></span></div>
-            <div class="panel-body flush" id="home-at"></div>
+
+          <div class="c5 home-result">
+            <div class="panel home-answer">
+              <div class="panel-head"><span class="panel-title" id="home-at-title">Your payment</span><span class="panel-meta" id="home-at-meta"></span></div>
+              <div class="panel-body flush" id="home-at"></div>
+            </div>
           </div>
-          <div class="panel c7" id="home-map-card">
-            <div class="panel-head"><span class="panel-title">Payment map</span><span class="panel-meta" id="home-map-meta"></span></div>
+
+          <div class="panel c12" id="home-map-card">
+            <div class="panel-head"><span class="panel-title">Nearby: price against cash</span><span class="panel-meta" id="home-map-meta"></span></div>
             <div class="panel-body flush"><div class="home-map-wrap"><table class="home-map" id="home-map"></table></div>
               <p class="inc-note" id="home-map-note"></p></div>
           </div>
-          <div class="panel c5">
-            <div class="panel-head"><span class="panel-title">More about the home</span><span class="panel-meta">tax, insurance, fees</span></div>
-            <div class="panel-body">
-              <form class="inc-form" autocomplete="off">
-                <label for="home-price">Price</label>
-                <div class="input-affix"><span>$</span><input id="home-price" data-home="price" type="number" inputmode="decimal" min="0" step="5000" placeholder="the most you could buy" /></div>
-                <label for="home-rate">Interest rate</label>
-                <div class="input-affix"><input id="home-rate" data-home="rate" type="number" inputmode="decimal" min="0" max="30" step="0.125" /><span class="suffix">%</span></div>
-                <label for="home-years">Term</label>
-                <select id="home-years" data-home="years" class="select">
-                  <option value="30">30 years</option><option value="20">20 years</option><option value="15">15 years</option><option value="10">10 years</option>
-                </select>
-                <label for="home-tax">Property tax, a year</label>
-                <div class="input-affix"><input id="home-tax" data-home="taxRate" type="number" inputmode="decimal" min="0" max="10" step="0.05" /><span class="suffix">% of price</span></div>
-                <label for="home-ins">Home insurance, a year</label>
-                <div class="input-affix"><span>$</span><input id="home-ins" data-home="insurance" type="number" inputmode="decimal" min="0" step="50" /></div>
-                <label for="home-hoa">HOA or condo fee, a month</label>
-                <div class="input-affix"><span>$</span><input id="home-hoa" data-home="hoa" type="number" inputmode="decimal" min="0" step="10" placeholder="0" /></div>
-              </form>
-              <details class="raise-more">
-                <summary>Closing costs, mortgage insurance and upkeep</summary>
-                <form class="inc-form" autocomplete="off">
-                  <label for="home-closing">Closing costs</label>
-                  <div class="input-affix"><input id="home-closing" data-home="closing" type="number" inputmode="decimal" min="0" max="15" step="0.25" /><span class="suffix">% of price</span></div>
-                  <label for="home-pmi">Mortgage insurance, a year</label>
-                  <div class="input-affix"><input id="home-pmi" data-home="pmiRate" type="number" inputmode="decimal" min="0" max="5" step="0.05" /><span class="suffix">% of loan</span></div>
-                  <label for="home-upkeep">Upkeep, a year</label>
-                  <div class="input-affix"><input id="home-upkeep" data-home="upkeep" type="number" inputmode="decimal" min="0" max="10" step="0.25" /><span class="suffix">% of price</span></div>
-                </form>
-              </details>
-            </div>
-          </div>
-          <div class="panel c5">
-            <div class="panel-head"><span class="panel-title">Who is on the loan</span><span class="panel-meta" id="home-who-meta"></span></div>
-            <div class="panel-body">
-              <div class="pay-sum" id="home-you"></div>
-              <form class="inc-form" autocomplete="off">
-                <label for="home-cash">Cash you put in</label>
-                <div class="input-affix"><span>$</span><input id="home-cash" data-home="cash" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
-                <label for="home-debts">Your debt payments, a month</label>
-                <div class="input-affix"><span>$</span><input id="home-debts" data-home="debts" type="number" inputmode="decimal" min="0" step="25" /></div>
-                <label for="home-rent">Housing costs you now, a month</label>
-                <div class="input-affix"><span>$</span><input id="home-rent" data-home="rent" type="number" inputmode="decimal" min="0" step="25" /></div>
-                <label for="home-floor">Keep your savings rate at least</label>
-                <div class="input-affix"><input id="home-floor" data-home="floor" type="number" inputmode="numeric" min="0" max="90" step="5" /><span class="suffix">%</span></div>
-              </form>
-              <label class="check home-check" id="home-raise-row" hidden><input type="checkbox" id="home-raise" data-home="raise" /> <span id="home-raise-label">Count the raise</span></label>
-              <div class="out-set home-co">
-                <label class="check"><input type="checkbox" id="home-co-on" data-co="on" /> Buying with a co-borrower</label>
-              </div>
-              <div id="home-co" hidden>
-                <form class="inc-form" autocomplete="off">
-                  <label for="home-co-income">Their gross income, a year</label>
-                  <div class="input-affix"><span>$</span><input id="home-co-income" data-co="income" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
-                  <label for="home-co-debts">Their debt payments, a month</label>
-                  <div class="input-affix"><span>$</span><input id="home-co-debts" data-co="debts" type="number" inputmode="decimal" min="0" step="25" placeholder="0" /></div>
-                  <label for="home-co-cash">Cash they put in</label>
-                  <div class="input-affix"><span>$</span><input id="home-co-cash" data-co="cash" type="number" inputmode="decimal" min="0" step="1000" placeholder="0" /></div>
-                  <label id="home-split-label">The monthly cost is split</label>
-                  <div class="seg" id="home-split" role="group" aria-labelledby="home-split-label">
-                    <button type="button" data-split="income">By income</button><button type="button" data-split="even">Evenly</button><button type="button" data-split="custom">Set it</button>
-                  </div>
-                  <label for="home-co-share" id="home-share-label">Your share</label>
-                  <div class="input-affix" id="home-share-box"><input id="home-co-share" data-co="share" type="number" inputmode="decimal" min="0" max="100" step="5" /><span class="suffix">%</span></div>
-                </form>
-              </div>
-              <div class="note" id="home-who-note"></div>
-            </div>
-          </div>
-          <div class="panel c7">
-            <div class="panel-head"><span class="panel-title">The three limits</span><span class="panel-meta" id="home-limits-meta"></span></div>
+          <div class="panel c12">
+            <div class="panel-head"><span class="panel-title">Why: the three limits</span><span class="panel-meta" id="home-limits-meta"></span></div>
             <div class="panel-body flush" id="home-limits"></div>
           </div>
         </div>
         <p class="inc-foot" id="home-foot"></p>
+        <button type="button" class="home-bar" id="home-bar" aria-label="Your payment; show the details"></button>
       </section>
 
       <!-- What if / A raise: what is kept of it, and what it does to the savings rate -->

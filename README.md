@@ -45,14 +45,18 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   the three limits are marked and the handle catches on them; green is what every limit allows,
   amber what one refuses, red beyond. Arrow keys move it a step (Shift for ten), and a double
   click goes back to the most you could buy.
-- **What if: a home, to explore.** Under the price track, **Try it** has a lever for the cash
-  you put in, the cash a co-borrower puts in, their income and the rate, plus the term. Moving
-  one keeps the home where it is, so the payment answers it. Each is marked where it matters:
-  3% and 20% down and what you have in the bank on the cash, and on their income the point at
-  which a lender says yes to this price. The payment is compared with a pinned scenario ("−$407
-  a month than pinned, with cash +$60k, their income +$72k"); pin a new one or go back to it.
-  The **payment map** shows your part of the month across nearby prices and amounts of cash,
-  coloured by the limits each breaks; tap a cell to try it.
+- **What if: a home, in order.** The page is set up the way a purchase is: **1 Who is buying**
+  (just you, or with a co-borrower: their income, debts and how you split the month), **2 The
+  home** (the price, dragged or typed, and its tax, insurance and HOA), **3 Cash going in**
+  (yours and theirs) and **4 The loan** (rate, term and the finer costs). **Your payment** stays
+  in view beside the steps, on a phone as a bar above the tabs: your part a month, what it is
+  against your rent now, a tick or a cross for the lender, your budget and the cash, and the
+  change from a pinned scenario ("−$407 a month than pinned, with cash +$60k, their income
+  +$72k"). Each lever is marked where it matters: 3% and 20% down and what you have on the
+  cash, and on their income the point at which a lender says yes to this price. Moving one
+  holds the home, so the payment answers it. After the steps, **Nearby** maps your part of the
+  month across nearby prices and amounts of cash (tap a cell to try it), and **Why** works
+  through the three limits.
 - **What if: a home.** The price three limits allow, and what any price does to
   the month: the **lender's** (housing up to 28% of gross income, housing plus debt payments up
   to 36%), **yours** (what your take-home carries while you keep the savings rate you choose,
