@@ -1566,6 +1566,14 @@ function renderHome(c) {
     funds: L.cash > 0 && a.short < 1,
   };
   homeRailSet({ L, a, price, ok, co, picked: !!cfg.price });
+  homeShown = price;
+  const liquid = BALANCE.length ? BALANCE[BALANCE.length - 1].net : null;
+  homeLeversSet({ cfg, co, you, L, a, price, liquid });
+  homeMapSet({ you, cfg, rent, price, L });
+  const mine = co.on ? a.mine : a.owning;
+  const snap = { price, mine, cash: L.cash, income: co.on ? co.income : 0, rate: cfg.rate, years: cfg.years, co: co.on };
+  if (!homePin) homePin = snap;
+  const vs = homeVs(snap, homePin);
   const tag = (good, yes = 'fits', no = 'over') => `<span class="tag ${good ? 'ok' : 'over'}">${good ? yes : no}</span>`;
 
   setKpis('home-kpis', [
@@ -1596,6 +1604,7 @@ function renderHome(c) {
   $('home-at-meta').textContent = cfg.price ? 'the price you entered' : 'the most the limits allow';
   $('home-at').innerHTML = price > 0 ? `<div class="inc-pad">
       <div class="out-big">${money0(co.on ? a.mine : a.owning)}<small> a month${co.on ? `, your ${share}` : ''}</small></div>
+      ${vs}
       <p class="out-say">${co.on ? `of ${money0(a.owning)} between you. ` : ''}${money0(a.loan)} borrowed at ${tidyNum(cfg.rate)}% over ${cfg.years} years, with ${money0(a.down)} down (${pct(a.downShare, a.downShare < 0.1 ? 1 : 0)}).${a.pmi > 0 ? ` Under ${pct(H.PMI_UNDER)} down, so mortgage insurance is charged until the loan is paid down to 80% of the price.` : ''}</p>
       ${stackBar(parts, a.owning, 'What a month of owning is made of')}${stackLegend(parts, a.owning)}</div>
     <div class="table-wrap"><table class="data"><thead>${head('A month')}</thead>
@@ -1606,7 +1615,7 @@ function renderHome(c) {
     <div class="table-wrap"><table class="data"><thead>${head('To close')}</thead>
       <tbody>${line({ name: 'Down payment', v: a.down }, cashCols)}${line({ name: 'Closing costs', v: Math.min(a.closing, a.cashUsed) }, cashCols)}</tbody>
       <tfoot><tr><td>Cash used</td>${cashCols(a.cashUsed)}</tr></tfoot></table></div>
-    <p class="inc-note">${L.cash > 0 ? '' : '<b class="neg">No cash is entered, so this is all borrowed and the closing costs are unpaid.</b> Enter what goes in under “Who is on the loan”. '}${all ? `<b class="pos">${money0(price)} fits all three limits.</b>` : fails.length ? `<b class="neg">At ${money0(price)}, ${fails.join('; ')}.</b>` : ''}
+    <p class="inc-note">${L.cash > 0 ? '' : '<b class="neg">No cash is entered, so this is all borrowed and the closing costs are unpaid.</b> Drag “Cash you put in” under Try it. '}${all ? `<b class="pos">${money0(price)} fits all three limits.</b>` : fails.length ? `<b class="neg">At ${money0(price)}, ${fails.join('; ')}.</b>` : ''}
       Over the ${cfg.years} years the loan costs ${money0(a.interest)} in interest. ${money0(a.principal1)} of the first payment is principal: it stays yours as equity, though it counts as spent here.${a.spare > 0 ? ` ${money0(a.spare)} of the cash is not needed.` : ''}</p>`
     : empty(L.cash > 0 ? 'Nothing fits the limits as they stand. Type a price to see what it would take.' : 'Enter the cash going in, or type a price.');
 
@@ -1628,7 +1637,7 @@ function renderHome(c) {
       <div class="home-limit-head"><span>${name}</span><b>${limit}</b>${good == null ? '' : tag(good)}</div>
       <p class="out-say">${say}</p>${rows.join('')}</div>`;
   const row = (label, v, cls = '') => `<div class="sum-row ${cls}"><span>${label}</span><b>${v}</b></div>`;
-  const liquid = BALANCE.length ? BALANCE[BALANCE.length - 1].net : null, left = liquid == null ? null : liquid - a.cashMine;
+  const left = liquid == null ? null : liquid - a.cashMine;
   const monthsOf = (v, per) => (per > 0 && v > 0 ? (v / per >= 24 ? '24+' : (v / per).toFixed(1)) : '0');
   $('home-limits-meta').textContent = `at ${money0(price)}`;
   $('home-limits').innerHTML = `<div class="inc-pad">
@@ -1679,6 +1688,149 @@ function homeRailSet({ L, a, price, ok, co, picked }) {
   });
   $('home-rail-meta').textContent = isPhone() ? 'drag · double-tap for the most' : 'drag, or ← → · double-click for the most you could buy';
 }
+
+// ── Try it: the levers ──
+// Cash in, theirs and yours, their income and the rate, each on a short ruled
+// track. Moving one keeps the home where it is: if the price was "the most you
+// could buy", it is held at what that was, so the payment answers the lever.
+let homeShown = 0, homePin = null;
+const lever = (id, apply) => rail($(id), {
+  onInput: v => {
+    const d = structuredClone(homeDraft || homeSaved());
+    if (d.price == null) d.price = homeShown;
+    apply(d, v);
+    homeDraft = d;
+    renderHome(CTX);
+  },
+  onChange: () => saveHome(homeDraft || homeSaved()),
+});
+const lvCash = lever('lv-cash', (d, v) => { d.cash = v; });
+const lvCoCash = lever('lv-co-cash', (d, v) => { d.co.cash = v; });
+const lvCoIncome = lever('lv-co-income', (d, v) => { d.co.income = v; });
+const lvRate = lever('lv-rate', (d, v) => { d.rate = v; });
+for (const id of ['lv-cash', 'lv-co-cash', 'lv-co-income', 'lv-rate']) $(id).classList.add('compact');
+const roundUp = (v, s) => Math.ceil(v / s) * s;
+
+function homeLeversSet({ cfg, co, you, L, a, price, liquid }) {
+  // The ranges come from what is saved, not from the lever being dragged, so a
+  // track does not stretch under the hand.
+  const saved = homeSaved();
+  const t = cfg, need20 = H.cashFor(price, t), need3 = H.cashFor(price, t, H.MIN_DOWN);
+  const theirs = co.on ? co.cash : 0;
+  const down = (total) => { const d = Math.max(0, Math.min(price, total - price * t.closing / 100)); return price > 0 ? d / price : 0; };
+  const mark = (v, label, sub) => ({ v: Math.max(0, Math.round(v / 1000) * 1000), label, sub, snap: Math.max(0, Math.round(v / 1000) * 1000) });
+
+  const cashMax = roundUp(Math.max(100000, saved.cash * 2, (liquid || 0) * 1.15, need20 - theirs + 10000), 25000);
+  lvCash.set({
+    min: 0, max: cashMax, step: 1000, value: Math.min(cfg.cash, cashMax), scale: ['$0', shortMoney(cashMax)], zones: [],
+    marks: [mark(need3 - theirs, '3% down'), mark(need20 - theirs, '20% down', 'no PMI'), ...(liquid > 0 ? [mark(liquid, 'You have', shortMoney(liquid))] : [])].filter(m => m.v > 0 || m.label === 'You have'),
+    tone: L.cash > 0 && a.short < 1 ? (a.pmi > 0 ? 'near' : 'ok') : 'over', label: 'Cash you put in', text: money0(cfg.cash),
+  });
+  $('lv-cash-v').innerHTML = `${money0(cfg.cash)}<small>${pct(down(L.cash), 1)} down${co.on ? ' together' : ''}</small>`;
+
+  for (const el of homeView.querySelectorAll('.lever-co')) el.hidden = !co.on;
+  $('lv-co').textContent = co.on ? 'Buy alone' : '+ Add a co-borrower';
+  if (co.on) {
+    const coMax = roundUp(Math.max(100000, saved.co.cash * 2, need20 - cfg.cash + 10000), 25000);
+    lvCoCash.set({
+      min: 0, max: coMax, step: 1000, value: Math.min(co.cash, coMax), scale: ['$0', shortMoney(coMax)], zones: [],
+      marks: [mark(need3 - cfg.cash, '3% down'), mark(need20 - cfg.cash, '20% down', 'no PMI')].filter(m => m.v > 0),
+      tone: a.short < 1 ? (a.pmi > 0 ? 'near' : 'ok') : 'over', label: 'Cash they put in', text: money0(co.cash),
+    });
+    $('lv-co-cash-v').innerHTML = `${money0(co.cash)}<small>${money0(L.cash)} together</small>`;
+
+    const qual = H.incomeFor(price, you, t);
+    const incMax = roundUp(Math.max(150000, saved.co.income * 2, qual * 1.25), 25000);
+    lvCoIncome.set({
+      min: 0, max: incMax, step: 1000, value: Math.min(co.income, incMax), scale: ['$0', shortMoney(incMax)],
+      zones: qual > 0 ? [{ from: 0, to: Math.min(qual, incMax), tone: 'over' }, { from: Math.min(qual, incMax), to: incMax, tone: 'ok' }] : [{ from: 0, to: incMax, tone: 'ok' }],
+      marks: qual > 0 ? [mark(qual, 'Lender says yes', `at ${shortMoney(qual)}`)] : [],
+      tone: co.income >= qual - 500 ? 'ok' : 'over', label: 'Their income, a year', text: money0(co.income),
+    });
+    const split = H.shareOf(you.gross, co);
+    $('lv-co-income-v').innerHTML = `${money0(co.income)}<small>${qual > 0 ? (co.income >= qual - 500 ? 'enough for this price' : `${shortMoney(qual - co.income)} short for this price`) : 'you qualify alone'}${co.split === 'income' ? ` · you pay ${pct(split)}` : ''}</small>`;
+  }
+
+  lvRate.set({
+    min: 2, max: 10, step: 0.125, value: Math.max(2, Math.min(10, cfg.rate)), scale: ['2%', '10%'], zones: [],
+    marks: [], tone: '', label: 'Interest rate', text: `${cfg.rate} percent`,
+  });
+  const pi1 = H.payment(1000, cfg.rate + 1, cfg.years) - H.payment(1000, cfg.rate, cfg.years);
+  $('lv-rate-v').innerHTML = `${tidyNum(cfg.rate)}%<small>${money0(a.pi)} principal + interest · 1% more is +${money0(pi1 * a.loan / 1000)} a month</small>`;
+  for (const b of $('lv-years').children) b.classList.toggle('active', Number(b.dataset.years) === cfg.years);
+}
+$('lv-years').addEventListener('click', ev => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  const d = structuredClone(homeSaved());
+  if (d.price == null) d.price = homeShown;
+  saveHome({ ...d, years: Number(b.dataset.years) });
+});
+$('lv-co').addEventListener('click', () => {
+  const d = structuredClone(homeSaved());
+  if (d.price == null) d.price = homeShown;
+  d.co.on = !d.co.on;
+  saveHome(d);
+});
+
+// What changed since the pinned scenario, as a line under the payment.
+function homeVs(now, pin) {
+  const k = v => shortMoney(Math.abs(v));
+  const parts = [];
+  if (Math.abs(now.price - pin.price) >= 500) parts.push(`price ${now.price > pin.price ? '+' : '−'}${k(now.price - pin.price)}`);
+  if (Math.abs(now.cash - pin.cash) >= 500) parts.push(`cash ${now.cash > pin.cash ? '+' : '−'}${k(now.cash - pin.cash)}`);
+  if (now.co !== pin.co) parts.push(now.co ? 'with a co-borrower' : 'alone');
+  else if (Math.abs(now.income - pin.income) >= 500) parts.push(`their income ${now.income > pin.income ? '+' : '−'}${k(now.income - pin.income)}`);
+  if (Math.abs(now.rate - pin.rate) > 1e-9) parts.push(`rate ${now.rate > pin.rate ? '+' : '−'}${tidyNum(Math.abs(now.rate - pin.rate))}%`);
+  if (now.years !== pin.years) parts.push(`${now.years} years`);
+  const d = now.mine - pin.mine;
+  if (!parts.length) return `<div class="home-vs"><span class="dim">Pinned. Move anything to compare against ${money0(pin.mine)} a month.</span></div>`;
+  return `<div class="home-vs"><b class="${Math.abs(d) < 1 ? '' : d > 0 ? 'neg' : 'pos'}">${d >= 0 ? '+' : '−'}${money0(Math.abs(d))} a month</b>
+    <span>than ${money0(pin.mine)} pinned, with ${parts.join(', ')}</span>
+    <button type="button" class="link-btn" id="home-pin">Pin this</button><button type="button" class="link-btn" id="home-unpin">Go back</button></div>`;
+}
+homeView.addEventListener('click', ev => {
+  if (ev.target.closest('#home-pin')) { homePin = null; renderHome(CTX); }
+  else if (ev.target.closest('#home-unpin') && homePin) {
+    const d = structuredClone(homeSaved());
+    Object.assign(d, { price: homePin.price, rate: homePin.rate, years: homePin.years });
+    d.co.on = homePin.co;
+    if (homePin.co) d.co.income = homePin.income;
+    const now = d.cash + (d.co.on ? d.co.cash : 0), f = now > 0 ? d.cash / now : (d.co.on ? 0.5 : 1);
+    d.cash = Math.round(homePin.cash * f); if (d.co.on) d.co.cash = Math.round(homePin.cash - d.cash);
+    saveHome(d);
+  }
+});
+
+// ── The payment map ──
+// Your part of the month across nearby prices (columns) and cash in (rows),
+// coloured by how many limits each breaks. A cell sets both.
+function homeMapSet({ you, cfg, rent, price, L }) {
+  const phone = isPhone(), nc = phone ? 5 : 7, nr = 5;
+  const ps = price > 0 ? H.niceStep(price * 0.07) : 25000, cs = H.niceStep(Math.max(L.cash * 0.22, 5000));
+  const prices = H.around(Math.round(price / 1000) * 1000, ps, nc).filter(v => v > 0);
+  const cashes = H.around(Math.round(L.cash / 1000) * 1000, cs, nr).reverse();
+  const g = H.grid(prices, cashes, { ...you }, cfg, rent);
+  const co = you.co?.on, here = (p, c) => Math.abs(p - Math.round(price / 1000) * 1000) < 1 && Math.abs(c - Math.round(L.cash / 1000) * 1000) < 1;
+  const tone = n => (n === 0 ? 'ok' : n === 1 ? 'near' : 'over');
+  $('home-map-meta').textContent = co ? 'your part a month' : 'a month, upkeep included';
+  $('home-map').innerHTML = `<thead><tr><th class="hm-corner"><span>cash in ↓</span><span>price →</span></th>${prices.map(p => `<th>${shortMoney(p)}</th>`).join('')}</tr></thead>
+    <tbody>${g.map(row => `<tr><th>${shortMoney(row[0].cash)}</th>${row.map(x => {
+      const v = co ? x.mine : x.owning;
+      return `<td><button type="button" class="map-cell ${tone(x.broken)}${here(x.price, x.cash) ? ' here' : ''}" data-map-price="${x.price}" data-map-cash="${x.cash}"
+        data-tip="${shortMoney(x.price)} with ${shortMoney(x.cash)} in|${money0(v)} a month · ${pct(x.downShare, 1)} down · ${x.broken ? `over ${x.broken} limit${x.broken === 1 ? '' : 's'}` : 'fits every limit'}">${phone ? `$${(v / 1000).toFixed(1)}k` : money0(v)}</button></td>`;
+    }).join('')}</tr>`).join('')}</tbody>`;
+  $('home-map-note').innerHTML = `Each cell is ${co ? 'your part of ' : ''}the month at that price with that much cash in${co ? ' between you' : ''}. <span class="map-key ok">fits every limit</span> <span class="map-key near">over one</span> <span class="map-key over">over two or more</span>. Tap one to try it.`;
+}
+$('home-map').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-map-price]');
+  if (!b) return;
+  const d = structuredClone(homeSaved());
+  d.price = Number(b.dataset.mapPrice);
+  const total = Number(b.dataset.mapCash), now = d.cash + (d.co.on ? d.co.cash : 0), f = now > 0 ? d.cash / now : (d.co.on ? 0.5 : 1);
+  d.cash = Math.round(total * f); if (d.co.on) d.co.cash = total - d.cash;
+  saveHome(d);
+});
 
 // The forms as they stand. Blank fields go back to what is read from the data
 // (price, debts, housing now) or to the default.

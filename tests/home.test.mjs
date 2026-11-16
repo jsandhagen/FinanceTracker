@@ -114,3 +114,37 @@ assert.deepEqual(H.monthlyAvg(list, '2026-04-02', x => (x.amount < 0 ? -x.amount
 assert.deepEqual(H.monthlyAvg([], '2026-04-02', () => 1), { monthly: 0, months: 0 });
 
 console.log('home: ok');
+
+// ── Exploring ──
+{
+  const t = H.settings({});
+  const you = { gross: 120000, takeHome: 7000, debts: 400, other: 3000, cash: 40000, floor: 0.1 };
+  const co = { on: true, income: 80000, debts: 900, cash: 30000, split: 'income', share: 50 };
+  // Cash is split as it is now: 40 of every 70.
+  const q = H.withCash({ ...you, co }, 140000);
+  close(q.cash, 80000, 'your cash, doubled'); close(q.co.cash, 60000, 'their cash, doubled');
+  assert.equal(H.withCash({ ...you, co: null }, 9).cash, 9);
+  close(H.withCash({ ...you, cash: 0, co: { ...co, cash: 0 } }, 100).cash, 50, 'evenly from nothing');
+  // At the income incomeFor gives, the lender's limit lands on the price.
+  for (const price of [450000, 650000, 900000]) {
+    const need = H.incomeFor(price, { ...you, co }, t);
+    const L = H.limits({ ...you, co: { ...co, income: need } }, t);
+    close(L.lender.price, price, `qualifying income for ${price}`, 2);
+  }
+  assert.equal(H.incomeFor(100000, { ...you, co }, t), 0, 'you carry it alone');
+  // 20% down plus 3% closing.
+  close(H.cashFor(500000, t), 115000, 'cash for 20% down');
+  close(H.cost(500000, H.cashFor(500000, t), t).downShare, 0.2, 'which is 20% down', 1e-9);
+  // Steps and ranges.
+  assert.equal(H.niceStep(42000), 50000); assert.equal(H.niceStep(800), 1000);
+  assert.deepEqual(H.around(500000, 50000, 5), [400000, 450000, 500000, 550000, 600000]);
+  assert.deepEqual(H.around(10000, 10000, 5), [0, 10000, 20000, 30000, 40000], 'never below zero, still holding the value');
+  // A grid cell is the verdict at that price and cash.
+  const g = H.grid([400000, 700000], [20000, 120000], { ...you, co }, t, 1800);
+  assert.equal(g.length, 2); assert.equal(g[0].length, 2);
+  const cell = g[1][0], v = H.verdict(400000, H.withCash({ ...you, co }, 120000), t, 1800);
+  close(cell.mine, v.a.mine, 'grid cell'); assert.equal(cell.broken, v.broken);
+  assert.ok(g[0][1].mine > g[1][1].mine, 'less cash in costs more a month');
+  assert.ok(g[1][1].mine > g[1][0].mine, 'a dearer home costs more a month');
+}
+console.log('home exploring: ok');

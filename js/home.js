@@ -188,3 +188,64 @@ export function monthlyAvg(txns, lastIso, value, n = 12) {
   if (!used.length) return { monthly: 0, months: 0 };
   return { monthly: used.reduce((s, m) => s + (by.get(m) || 0), 0) / used.length, months: used.length };
 }
+
+// ── Exploring ────────────────────────────────────────────────────────────────
+
+// Whether a price passes each of the three limits, and how many it breaks.
+// With no cash entered the cash test is not counted.
+export function verdict(price, p, t, rent = 0) {
+  const a = at(price, p, t, rent);
+  const ok = {
+    lender: a.front <= FRONT + 1e-4 && a.back <= BACK + 1e-4,
+    yours: a.rateThen >= p.floor - 1e-4,
+    funds: a.short < 1,
+  };
+  const cash = p.cash + (p.co?.on ? p.co.cash : 0);
+  const broken = [ok.lender, ok.yours, ok.funds || !(cash > 0)].filter(x => !x).length;
+  return { a, ok, broken };
+}
+
+// The same people with `total` cash between them, split as it is now (evenly
+// when neither has put any in yet).
+export function withCash(p, total) {
+  if (!p.co?.on) return { ...p, cash: total };
+  const now = p.cash + p.co.cash, f = now > 0 ? p.cash / now : 0.5;
+  return { ...p, cash: total * f, co: { ...p.co, cash: total * (1 - f) } };
+}
+
+// The co-borrower income at which a lender would carry `price`: everyone's
+// gross a month has to cover housing at 28%, and housing plus debts at 36%.
+export function incomeFor(price, p, t) {
+  const co = p.co?.on ? p.co : { ...CO_DEFAULTS, on: true };
+  const b = party({ ...p, co }), c = cost(price, b.cash, t);
+  return Math.max(0, Math.max(c.housing / FRONT, (c.housing + b.debts) / BACK) * 12 - p.gross);
+}
+
+// The cash that puts `share` of the price down, closing costs paid.
+export const cashFor = (price, t, share = PMI_UNDER) => price * (t.closing / 100 + share);
+
+// A round step near `x`, for the payment map's rows and columns.
+export function niceStep(x) {
+  for (const s of [1000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 200000, 250000, 500000]) if (s >= x) return s;
+  return Math.ceil(x / 500000) * 500000;
+}
+
+// `n` values a `step` apart with `v` among them, none below zero: as centred on
+// `v` as zero allows.
+export function around(v, step, n) {
+  const first = Math.max(0, v - Math.floor(n / 2) * step);
+  const start = v - Math.round((v - first) / step) * step;
+  return Array.from({ length: n }, (_, i) => start + i * step);
+}
+
+// Monthly cost over a grid of prices and cash: each cell is your part of
+// owning a month and how many limits it breaks.
+export function grid(prices, cashes, p, t, rent = 0) {
+  return cashes.map(cash => {
+    const q = withCash(p, cash);
+    return prices.map(price => {
+      const v = verdict(price, q, t, rent);
+      return { price, cash, mine: v.a.mine, owning: v.a.owning, broken: v.broken, ok: v.ok, downShare: v.a.downShare };
+    });
+  });
+}

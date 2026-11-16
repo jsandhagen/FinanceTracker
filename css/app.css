@@ -1031,3 +1031,49 @@ tr.lapsed td { color: var(--ink3); }
   .rail-read b { font-size: 2.2rem; }
   #inc-raise-rail .rail-mark:nth-child(even) b { display: none; }
 }
+
+/* ── What if / A home: the levers and the payment map ── */
+.lever + .lever { margin-top: 1.2rem; }
+.lever-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.lever-head span { color: var(--ink2); font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.lever-head b { font-size: 1.8rem; font-weight: 500; text-align: right; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.lever-head b small { font-size: 1.15rem; font-weight: 400; color: var(--ink3); }
+.lever-foot { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1.6rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.rail.compact { padding: 2.6rem 0 2.4rem; }
+.rail.compact .rail-handle, .rail.compact .rail-marks { top: 2.6rem; }
+.rail.compact .rail-read { display: none; }
+.rail.compact .rail-track { height: 1rem; }
+.rail.compact .rail-handle, .rail.compact .rail-marks { height: 1rem; }
+.rail.compact .rail-mark b { top: -1.9rem; font-size: 1rem; }
+.rail.compact .rail-mark small { top: 1.8rem; font-size: 1rem; }
+.rail.compact .rail-scale { margin-top: 0.9rem; font-size: 1rem; }
+.rail.compact .rail-mark small + * { display: none; }
+.rail.compact:has(.rail-mark small:not(:empty)) .rail-scale { visibility: hidden; }
+.home-vs { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1rem; margin: 0.2rem 0 0.8rem; font-size: 1.3rem; color: var(--ink2); }
+.home-vs b { font-size: 1.5rem; font-weight: 600; }
+.home-vs .link-btn { font-size: 1.2rem; color: var(--accent-hi); }
+.home-map-wrap { padding: 1.2rem 1.4rem 0; }
+.home-map { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+.home-map th { font-size: 1.1rem; font-weight: 500; color: var(--ink3); text-align: center; padding: 0.3rem 0; white-space: nowrap; }
+.home-map tbody th { text-align: right; padding-right: 0.8rem; width: 6.4rem; }
+.home-map .hm-corner { width: 6.4rem; text-align: left; font-size: 1rem; line-height: 1.3; }
+.home-map .hm-corner span { display: block; }
+.map-cell { width: 100%; height: 3.6rem; border: 1px solid transparent; font: inherit; font-size: 1.25rem; color: var(--ink); cursor: pointer; transition: transform 0.12s var(--ease), border-color 0.12s, filter 0.12s; }
+.map-cell.ok { background: rgba(79, 214, 139, 0.16); }
+.map-cell.near { background: rgba(245, 176, 65, 0.18); }
+.map-cell.over { background: rgba(255, 107, 107, 0.16); color: var(--ink2); }
+.map-cell:hover { filter: brightness(1.5); border-color: var(--line-strong); }
+.map-cell.here { border-color: #fff; box-shadow: 0 0 0 1px #000, 0 0 1.6rem var(--glow); font-weight: 700; }
+.map-key { white-space: nowrap; }
+.map-key::before { content: ''; display: inline-block; width: 0.9rem; height: 0.9rem; margin: 0 0.5rem 0 0.4rem; vertical-align: -0.05rem; }
+.map-key.ok::before { background: rgba(79, 214, 139, 0.5); } .map-key.near::before { background: rgba(245, 176, 65, 0.55); } .map-key.over::before { background: rgba(255, 107, 107, 0.5); }
+@media (max-width: 640px) {
+  .home-map-wrap { padding: 1rem 0.6rem 0; }
+  .home-map { border-spacing: 2px; }
+  .home-map tbody th, .home-map .hm-corner { width: 4.6rem; padding-right: 0.4rem; }
+  .map-cell { height: 4.2rem; font-size: 1.15rem; }
+}
+.rail.compact:has(.rail-mark.low) { padding-bottom: 2.4rem; }
+.rail.compact .rail-mark.low b { top: 1.8rem; }
+.rail.compact .rail-mark.low small { display: none; }
+.rail.compact .rail-mark.low i { bottom: -0.5rem; }
