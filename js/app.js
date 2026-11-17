@@ -217,6 +217,13 @@ document.addEventListener('pointermove', ev => {
 });
 document.addEventListener('scroll', hideTip, true);
 
+// A focused number box turns the mouse wheel into steps up and down, so
+// scrolling the page past one quietly changes it. Let go of it instead.
+document.addEventListener('wheel', ev => {
+  const t = ev.target;
+  if (t instanceof HTMLInputElement && t.type === 'number' && t === document.activeElement) t.blur();
+}, { passive: true });
+
 // ── Views ─────────────────────────────────────────────────────────────────────
 const VIEWS = { overview: 'Overview', cashflow: 'Cash flow', outlook: 'Outlook', whatif: 'What if', home: 'A home', raise: 'A raise', income: 'Income', salary: 'Salary', spending: 'Spending', budgets: 'Budgets', recurring: 'Recurring', transactions: 'Transactions', accounts: 'Accounts' };
 const PARENT = { home: 'whatif', raise: 'whatif', salary: 'income', budgets: 'spending' };   // sub-items in the menu

@@ -72,24 +72,43 @@ export function rail(el, { onInput = () => {}, onChange = () => {}, onReset = nu
     s.value = v; place(); onInput(v);
   }
 
-  el.addEventListener('pointerdown', ev => {
-    if (ev.button > 0) return;
+  // A mouse takes hold at once. A finger may only be scrolling the page past,
+  // so it takes hold only once it has moved sideways more than it has moved
+  // down (or lifts without moving, a tap). Until then nothing changes, and if
+  // the page takes the gesture for a scroll the value is left as it was.
+  const SLOP = 8;
+  let pending = null;
+  const grab = ev => {
+    pending = null;
     dragging = true;
     el.classList.add('dragging');
-    el.setPointerCapture(ev.pointerId);
+    try { el.setPointerCapture(ev.pointerId); } catch {}
     handle.focus({ preventScroll: true });
     moveTo(ev.clientX);
-    ev.preventDefault();
+  };
+  el.addEventListener('pointerdown', ev => {
+    if (ev.button > 0) return;
+    if (ev.pointerType === 'mouse') { grab(ev); ev.preventDefault(); return; }
+    pending = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
   });
-  el.addEventListener('pointermove', ev => { if (dragging) moveTo(ev.clientX); });
+  el.addEventListener('pointermove', ev => {
+    if (dragging) { moveTo(ev.clientX); return; }
+    if (!pending || ev.pointerId !== pending.id) return;
+    const dx = Math.abs(ev.clientX - pending.x), dy = Math.abs(ev.clientY - pending.y);
+    if (dy > SLOP && dy >= dx) pending = null;          // a scroll: let it go by
+    else if (dx > SLOP && dx > dy) grab(ev);
+  });
   const drop = () => {
     if (!dragging) return;
     dragging = false; caught = null;
     el.classList.remove('dragging', 'caught');
     onChange(s.value);
   };
-  el.addEventListener('pointerup', drop);
-  el.addEventListener('pointercancel', drop);
+  el.addEventListener('pointerup', ev => {
+    if (pending && ev.pointerId === pending.id) { grab(ev); }   // a tap
+    drop();
+  });
+  el.addEventListener('pointercancel', () => { pending = null; drop(); });
   if (onReset) el.addEventListener('dblclick', () => onReset());
 
   let keyTimer;
