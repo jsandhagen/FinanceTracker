@@ -886,6 +886,12 @@ tr.lapsed td { color: var(--ink3); }
 #inc-raise-figs { margin-bottom: 1.6rem; }
 #inc-raise-figs .kpi-sub { white-space: normal; }
 .raise-where { margin-bottom: 0.6rem; }
+/* The bonus in the what if */
+.raise-bonus { margin: 0.4rem 0 1.6rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
+.raise-bonus-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 0.8rem; }
+.raise-bonus-row .input-affix input { width: 7rem; }
+#inc-wi-bonus-note { margin: 0.8rem 0 0; }
+#inc-wi-bonus-note:empty { display: none; }
 .raise-save { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 1.4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
 .raise-save label { color: var(--ink2); }
 .raise-save #inc-save-share { width: 5.8rem; }

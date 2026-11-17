@@ -78,7 +78,10 @@ It runs entirely in the browser, installs as an app on a phone or computer, and 
   **Virginia** income tax, then backs your own rates out of the take-home you actually receive
   (read from your deposits, or typed in): whatever the tax tables do not explain is treated as
   money taken out before tax. Under **What if / A raise**, type a raise, as a percentage, an amount or a new salary, to see
-  what you keep of it, how each tax moves, and what it does to your savings rate. Its
+  what you keep of it, how each tax moves, and what it does to your savings rate. The bonus
+  can be set there too, as a target share of base pay (so it follows the raise), give or take
+  a percentage for a year that pays under or over target: the bonus and the year's take-home
+  are shown as a range, and A home counts the bonus at its target. Its
   month-by-month tracking counts only sources typed Salary.
 - **Optional bank connection through Plaid**, so new transactions arrive without downloading
   anything. The [Android app](android/README.md) connects by itself, with nothing to host; a

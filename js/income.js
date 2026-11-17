@@ -12,7 +12,7 @@ export const FREQ = {
   monthly:     { label: 'Monthly',       n: 12 },
 };
 
-export const DEFAULTS = { salary: 0, freq: 'biweekly', bonus: 0, bonusUnit: 'usd', bonusMonth: 3, filing: 'single', netPay: null, raise: null, saveShare: 100 };
+export const DEFAULTS = { salary: 0, freq: 'biweekly', bonus: 0, bonusUnit: 'usd', bonusMonth: 3, filing: 'single', netPay: null, raise: null, raiseBonus: null, saveShare: 100 };
 
 const p2 = n => String(n).padStart(2, '0');
 const iso = (y, m, d) => `${y}-${p2(m)}-${p2(d)}`;
@@ -75,13 +75,28 @@ export function detectPaycheck(sched) {
 
 const bonusOf = (cfg, salary) => (cfg.bonusUnit === 'pct' ? salary * (Number(cfg.bonus) || 0) / 100 : Number(cfg.bonus) || 0);
 
+// The bonus as a share of base pay, in percent, however it was entered.
+export const bonusPct = (cfg, salary = Number(cfg.salary) || 0) =>
+  cfg.bonusUnit === 'pct' ? Number(cfg.bonus) || 0 : salary > 0 ? (Number(cfg.bonus) || 0) / salary * 100 : 0;
+
+// The what if can set the bonus too: raiseBonus is { pct, spread }, a target
+// share of base pay (null keeps the bonus as the Salary tab has it) and how far
+// a year's payout strays from that target, give or take, in percent of it.
+// Set as a share, the bonus follows the base pay up with a raise.
+export function scenario(cfg) {
+  const p = cfg.raiseBonus?.pct;
+  return p != null && isFinite(Number(p)) ? { ...cfg, bonus: Math.max(0, Number(p)), bonusUnit: 'pct' } : cfg;
+}
+export const bonusSpread = cfg => Math.max(0, Math.min(100, Number(cfg.raiseBonus?.spread) || 0)) / 100;
+
 // A year at one salary, with the rates in `cal` (see tax.calibrate). Ordinary
 // paychecks are taxed as the salary alone; the bonus is whatever the year's
 // tax grows by when it is added, which is why it keeps less per dollar.
-export function project(cfg, cal, salary = Number(cfg.salary) || 0) {
+// `payout` scales the bonus: 0.8 is a year it pays 80% of its target.
+export function project(cfg, cal, salary = Number(cfg.salary) || 0, payout = 1) {
   const periods = (FREQ[cfg.freq] || FREQ.biweekly).n;
   const rates = { filing: cfg.filing, pretaxRate: cal.pretaxRate, taxScale: cal.taxScale };
-  const bonusGross = bonusOf(cfg, salary);
+  const bonusGross = bonusOf(cfg, salary) * Math.max(0, payout);
   const base = yearOf({ gross: salary, ...rates });
   const full = yearOf({ gross: salary + bonusGross, ...rates });
   const per = {};

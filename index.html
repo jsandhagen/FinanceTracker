@@ -407,6 +407,17 @@
                 <button type="button" class="link-btn" id="inc-raise-clear" hidden>Clear</button>
               </div>
               <div id="inc-raise-rail"></div>
+              <!-- The bonus in the what if: a target share of base pay, so it follows a raise, and how far a year strays from it -->
+              <div class="raise-bonus" id="inc-wi-bonus-box">
+                <div class="lever-head"><span>Bonus</span><b id="inc-wi-bonus-v"></b></div>
+                <div class="raise-bonus-row">
+                  <div class="input-affix"><input id="inc-wi-bonus" type="number" inputmode="decimal" min="0" max="200" step="any" aria-label="Bonus target, as a share of base pay" /><span class="suffix">% of base</span></div>
+                  <span class="dim">give or take</span>
+                  <div class="input-affix"><input id="inc-wi-spread" type="number" inputmode="decimal" min="0" max="100" step="5" placeholder="0" aria-label="How far a year's bonus strays from its target, in percent" /><span class="suffix">%</span></div>
+                  <button type="button" class="link-btn" id="inc-wi-bonus-reset" hidden>Same as Salary</button>
+                </div>
+                <p class="note" id="inc-wi-bonus-note"></p>
+              </div>
               <div class="kpi-row" id="inc-raise-figs" hidden></div>
               <div id="inc-raise-bar"></div>
               <div class="raise-save" id="inc-raise-save" hidden>

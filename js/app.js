@@ -1117,7 +1117,7 @@ function renderIncome(c) {
       kpiTile({ label: 'Take-home per year', value: '—' }), kpiTile({ label: 'Kept of gross', value: '—' })]);
     for (const id of ['inc-split', 'inc-va', 'inc-year-sum', 'inc-raise-bar']) $(id).innerHTML = id === 'inc-raise-bar' ? '' : empty('Enter your salary to see this.');
     $('inc-raise-table').innerHTML = ''; $('inc-raise-note').innerHTML = '<button class="link-btn" data-goto="salary">Enter your salary</button> to try a raise.'; $('inc-year-legend').innerHTML = '';
-    for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear', 'inc-raise-rail']) $(id).hidden = true;
+    for (const id of ['inc-raise-figs', 'inc-raise-save', 'inc-raise-more', 'inc-raise-clear', 'inc-raise-rail', 'inc-wi-bonus-box']) $(id).hidden = true;
     for (const id of ['inc-split-meta', 'inc-raise-meta', 'inc-year-meta', 'inc-va-meta']) $(id).textContent = '';
     fill('inc-raise', '');
     charts['inc-year-chart']?.destroy(); delete charts['inc-year-chart'];
@@ -1128,8 +1128,13 @@ function renderIncome(c) {
   const now = N.project(eff, rates);
   const newSalary = N.raisedSalary(salary, cfg.raise);
   const hasRaise = !!cfg.raise && newSalary > 0 && Math.abs(newSalary - salary) >= 0.5;
-  const then = N.project(eff, rates, hasRaise ? newSalary : salary);
+  // The what if runs on its own bonus when one is set there (see N.scenario).
+  const wi = N.scenario(eff), spread = N.bonusSpread(cfg), salThen = hasRaise ? newSalary : salary;
+  const then = N.project(wi, rates, salThen);
   const d = T.difference(now.full, then.full);
+  // Something to compare: a raise, or a bonus that differs from today's.
+  const hasChange = hasRaise || Math.abs(then.full.gross - now.full.gross) >= 0.5;
+  const withName = hasRaise ? 'With the raise' : 'With this bonus';
   const month = MONTH_NAMES[(cfg.bonusMonth || 3) - 1];
 
   // Deposits against the plan, for the year the data ends in.
@@ -1190,6 +1195,27 @@ function renderIncome(c) {
     label: 'Raise, as a percentage', text: hasRaise ? `${tidyNum(pctNow)} percent, ${money0(newSalary)}` : 'no raise',
   });
 
+  // ── The bonus in the what if ──
+  // Blank, it is the Salary tab's bonus; typed, a share of base pay that follows
+  // the raise. Give or take is how far a year's payout strays from the target.
+  const bpSet = cfg.raiseBonus?.pct != null, pctToday = N.bonusPct(eff, salary);
+  $('inc-wi-bonus-box').hidden = false;
+  fill('inc-wi-bonus', bpSet ? tidyNum(Number(cfg.raiseBonus.pct)) : '');
+  $('inc-wi-bonus').placeholder = tidyNum(Math.round(pctToday * 100) / 100);
+  fill('inc-wi-spread', spread > 0 ? tidyNum(spread * 100) : '');
+  $('inc-wi-bonus-reset').hidden = !cfg.raiseBonus;
+  if (then.bonusGross > 0.5) {
+    const lo = spread > 0 ? N.project(wi, rates, salThen, 1 - spread) : null, hi = spread > 0 ? N.project(wi, rates, salThen, 1 + spread) : null;
+    $('inc-wi-bonus-v').innerHTML = `${money0(then.bonusGross)}<small>${money0(then.bonus.net)} after tax${lo ? ` · likely ${money0(lo.bonus.net)} – ${money0(hi.bonus.net)}` : ''}</small>`;
+    $('inc-wi-bonus-note').textContent = (bpSet || cfg.bonusUnit === 'pct'
+      ? `The target is ${tidyNum(bpSet ? Number(cfg.raiseBonus.pct) : pctToday)}% of ${money0(salThen)} base pay, paid in ${month}${hasRaise ? ', so it rises with the raise' : ''}.`
+      : `The Salary tab has a fixed ${money0(then.bonusGross)} bonus, paid in ${month}, so it does not move with a raise. Type a share of base pay to have it follow your pay.`)
+      + (lo ? ` A year that pays ${pct(1 - spread)} to ${pct(1 + spread)} of target comes to ${money0(lo.bonusGross)} to ${money0(hi.bonusGross)} before tax, and ${money0(lo.full.net)} to ${money0(hi.full.net)} of take-home for the year.` : ' Add give or take to see a range.');
+  } else {
+    $('inc-wi-bonus-v').innerHTML = `None<small>type a target to try one</small>`;
+    $('inc-wi-bonus-note').textContent = bpSet ? '' : `No bonus is set on the Salary tab. Type one here as a share of base pay; it moves with the raise.`;
+  }
+
   const spend = N.monthlySpending(c.allOps, through), spendYr = spend.monthly * 12;
   const share = Math.max(0, Math.min(100, Number(cfg.saveShare ?? 100))) / 100;
   const spendThen = spendYr + (d.net > 0 ? d.net * (1 - share) : 0);
@@ -1198,19 +1224,26 @@ function renderIncome(c) {
   // The answer first: what the raise adds to a paycheck and to the year, and
   // how much of it is kept. The rest of the panel is the working.
   const up = d.gross >= 0, total = Math.abs(d.gross);
-  $('inc-raise-figs').hidden = $('inc-raise-more').hidden = !hasRaise;
-  $('inc-raise-save').hidden = !hasRaise || !spend.months || d.net <= 0;
-  if (hasRaise) {
+  $('inc-raise-figs').hidden = $('inc-raise-more').hidden = !hasChange;
+  $('inc-raise-save').hidden = !hasChange || !spend.months || d.net <= 0;
+  if (hasChange) {
     const bonusToo = Math.abs(then.bonusGross - now.bonusGross) > 0.5, sign = up ? '+' : '−';
+    // A bonus that strays from its target spreads the year's change.
+    const sgn = v => (v >= 0 ? '+' : '−') + money0(Math.abs(v));
+    const yearRange = spread > 0 && then.bonusGross > 0.5
+      ? `; ${sgn(N.project(wi, rates, salThen, 1 - spread).full.net - now.full.net)} to ${sgn(N.project(wi, rates, salThen, 1 + spread).full.net - now.full.net)} as the bonus pays out` : '';
     setKpis('inc-raise-figs', [
-      kpiTile({ label: up ? 'More per paycheck' : 'Less per paycheck', value: sign + money(Math.abs(then.per.net - now.per.net)), tone: up ? 'pos' : 'neg', sub: `${money(now.per.net)} → ${money(then.per.net)} take-home` }),
-      kpiTile({ label: up ? 'More per year' : 'Less per year', value: sign + money0(Math.abs(d.net)), tone: up ? 'pos' : 'neg', sub: `take-home, of ${money0(total)} ${up ? 'more' : 'less'} gross${bonusToo ? ', bonus included' : ''}` }),
-      kpiTile({ label: up ? 'You keep' : 'Comes out of take-home', value: pct(Math.abs(d.net) / total), sub: `of the ${up ? 'raise' : 'cut'}; the rest is tax${Math.abs(d.pretax) > 0.5 ? ' and before-tax deductions' : ''}`,
+      // Without a raise the paychecks do not move, so the first figure is the bonus.
+      hasRaise
+        ? kpiTile({ label: up ? 'More per paycheck' : 'Less per paycheck', value: sign + money(Math.abs(then.per.net - now.per.net)), tone: up ? 'pos' : 'neg', sub: `${money(now.per.net)} → ${money(then.per.net)} take-home` })
+        : kpiTile({ label: up ? 'More bonus' : 'Less bonus', value: sign + money0(Math.abs(then.bonus.net - now.bonus.net)), tone: up ? 'pos' : 'neg', sub: `${money0(now.bonus.net)} → ${money0(then.bonus.net)} after tax, in ${month}` }),
+      kpiTile({ label: up ? 'More per year' : 'Less per year', value: sign + money0(Math.abs(d.net)), tone: up ? 'pos' : 'neg', sub: `take-home, of ${money0(total)} ${up ? 'more' : 'less'} gross${bonusToo && hasRaise ? ', bonus included' : ''}${yearRange}` }),
+      kpiTile({ label: up ? 'You keep' : 'Comes out of take-home', value: pct(Math.abs(d.net) / total), sub: `of the ${hasRaise ? (up ? 'raise' : 'cut') : 'change'}; the rest is tax${Math.abs(d.pretax) > 0.5 ? ' and before-tax deductions' : ''}`,
         spark: `<div class="meter" aria-hidden="true"><div style="width:${(Math.abs(d.net) / total * 100).toFixed(1)}%"></div></div>` }),
     ]);
     $('inc-save-out').innerHTML = `Savings rate <b>${pct(sNow.ofTakeHome, 1)}</b> → <b class="${sThen.ofTakeHome >= sNow.ofTakeHome ? 'pos' : 'neg'}">${pct(sThen.ofTakeHome, 1)}</b>, with ${money0(sThen.left - sNow.left)} more left over a year.`;
   }
-  $('inc-raise-bar').innerHTML = hasRaise ? (() => {
+  $('inc-raise-bar').innerHTML = hasChange ? (() => {
     const parts = [
       { name: up ? 'You keep' : 'Take-home lost', v: Math.abs(d.net), color: INC.net },
       { name: 'Before tax', v: Math.abs(d.pretax), color: INC.pretax },
@@ -1222,7 +1255,7 @@ function renderIncome(c) {
   })() : '';
 
   const chg = (a, b, { rate = false, good = 1 } = {}) => {
-    if (!hasRaise) return '<td class="num dim">—</td>';
+    if (!hasChange) return '<td class="num dim">—</td>';
     const v = b - a;
     if (Math.abs(v) < (rate ? 0.00005 : 0.005)) return '<td class="num dim">=</td>';
     const txt = rate ? `${v > 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)} pts` : (v > 0 ? '+' : '−') + '$' + fmt0(v);
@@ -1230,10 +1263,10 @@ function renderIncome(c) {
   };
   const row = (name, a, b, opt = {}) => {
     const f = opt.rate ? v => (v == null ? '—' : pct(v, 1)) : opt.cents ? money : money0;
-    return `<tr${opt.cls ? ` class="${opt.cls}"` : ''}><td>${name}</td><td class="num">${f(a)}</td><td class="num${hasRaise ? '' : ' dim'}">${hasRaise ? f(b) : '—'}</td>${a == null || b == null ? '<td class="num dim">—</td>' : chg(a, b, opt)}</tr>`;
+    return `<tr${opt.cls ? ` class="${opt.cls}"` : ''}><td>${name}</td><td class="num">${f(a)}</td><td class="num${hasChange ? '' : ' dim'}">${hasChange ? f(b) : '—'}</td>${a == null || b == null ? '<td class="num dim">—</td>' : chg(a, b, opt)}</tr>`;
   };
   const t = then.full;
-  $('inc-raise-table').innerHTML = `<thead><tr><th></th><th class="num">Now</th><th class="num">With the raise</th><th class="num">Change</th></tr></thead><tbody>
+  $('inc-raise-table').innerHTML = `<thead><tr><th></th><th class="num">Now</th><th class="num">${withName}</th><th class="num">Change</th></tr></thead><tbody>
     ${row('Salary', salary, then.salary)}
     ${now.bonusGross > 0 || then.bonusGross > 0 ? row(`Bonus, ${month}`, now.bonusGross, then.bonusGross) : ''}
     ${row('Federal income tax', y.federal, t.federal, { good: 0 })}
@@ -1252,8 +1285,8 @@ function renderIncome(c) {
   </tbody>`;
   const band = v => pct(v, v * 1000 % 10 ? 2 : 0);
   // With a raise, how it is taxed goes with the breakdown; without one, the hint stays in view.
-  $('inc-raise-note').innerHTML = hasRaise ? '' : `Drag the track, or type a raise as a percentage, in dollars a year, or as the new salary. Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare.`;
-  $('inc-raise-why').innerHTML = !hasRaise ? '' : `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
+  $('inc-raise-note').innerHTML = hasChange ? '' : `Drag the track, or type a raise as a percentage, in dollars a year, or as the new salary. Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare.`;
+  $('inc-raise-why').innerHTML = !hasChange ? '' : `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
     + (spend.months ? `The savings rate uses your average spending over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month).` : '');
 
   // ── This year ──
@@ -1289,11 +1322,11 @@ function renderIncome(c) {
   const bandName = b => (b.from === 0 ? `First ${money0(b.to)}` : b.to === Infinity ? `Over ${money0(b.from)}` : `${money0(b.from)} – ${money0(b.to)}`);
   const vaDed = T.VIRGINIA.deduction[cfg.filing] + T.VIRGINIA.exemption * T.VIRGINIA.exemptions[cfg.filing];
   $('inc-va-meta').textContent = `${pct(y.virginia / y.gross, 2)} of gross`;
-  $('inc-va').innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Taxable income</th><th class="num">Rate</th><th class="num">Tax now</th>${hasRaise ? '<th class="num">With the raise</th>' : ''}</tr></thead>
-    <tbody>${va.map((b, i) => `<tr><td>${bandName(b)}</td><td class="num">${band(b.rate)}</td><td class="num">${money(b.tax * rates.taxScale)}</td>${hasRaise ? `<td class="num">${money(vaThen[i].tax * rates.taxScale)}</td>` : ''}</tr>`).join('')}</tbody>
-    <tfoot><tr><td>Virginia tax</td><td></td><td class="num">${money(y.virginia)}</td>${hasRaise ? `<td class="num">${money(t.virginia)}</td>` : ''}</tr></tfoot></table></div>
+  $('inc-va').innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Taxable income</th><th class="num">Rate</th><th class="num">Tax now</th>${hasChange ? `<th class="num">${withName}</th>` : ''}</tr></thead>
+    <tbody>${va.map((b, i) => `<tr><td>${bandName(b)}</td><td class="num">${band(b.rate)}</td><td class="num">${money(b.tax * rates.taxScale)}</td>${hasChange ? `<td class="num">${money(vaThen[i].tax * rates.taxScale)}</td>` : ''}</tr>`).join('')}</tbody>
+    <tfoot><tr><td>Virginia tax</td><td></td><td class="num">${money(y.virginia)}</td>${hasChange ? `<td class="num">${money(t.virginia)}</td>` : ''}</tr></tfoot></table></div>
     <p class="inc-note">Virginia taxes ${money0(y.vaTaxable)} of your ${money0(y.gross)}: gross pay${y.pretax > 0.004 ? `, less ${money0(y.pretax)} taken out before tax,` : ''} less the ${money0(T.VIRGINIA.deduction[cfg.filing])} standard deduction and ${money0(vaDed - T.VIRGINIA.deduction[cfg.filing])} in personal exemptions.
-    ${y.vaTaxable > 17000 ? `Everything past ${money0(17000)} is in the top band, so ${hasRaise ? `the raise adds <b>${money0(t.virginia - y.virginia)}</b> of Virginia tax, ${band(0.0575)} of its taxable part` : `a raise is taxed ${band(0.0575)} by Virginia on every taxable dollar`}.` : ''}
+    ${y.vaTaxable > 17000 ? `Everything past ${money0(17000)} is in the top band, so ${hasChange ? `${hasRaise ? 'the raise' : 'the bonus'} adds <b>${money0(t.virginia - y.virginia)}</b> of Virginia tax, ${band(0.0575)} of its taxable part` : `a raise is taxed ${band(0.0575)} by Virginia on every taxable dollar`}.` : ''}
     ${rates.calibrated && rates.fit && rates.taxScale < 0.9995 ? `Scaled to ${pct(rates.taxScale)} of the schedule, to match your take-home.` : ''}</p>`;
 }
 
@@ -1322,6 +1355,9 @@ function readIncome() {
   cfg.saveShare = Math.max(0, Math.min(100, num('inc-save-share') ?? 100));
   const mode = raiseModeOf(cfg), v = num('inc-raise');
   cfg.raise = v == null || (mode !== 'salary' && v === 0) ? null : { mode, value: v };
+  // The what-if bonus: a blank target keeps the Salary tab's bonus.
+  const bp = num('inc-wi-bonus'), sp = num('inc-wi-spread');
+  cfg.raiseBonus = bp == null && !(sp > 0) ? null : { pct: bp == null ? null : Math.max(0, bp), spread: Math.max(0, Math.min(100, sp || 0)) };
   return cfg;
 }
 async function saveIncome(cfg) {
@@ -1343,6 +1379,7 @@ incomeView.addEventListener('submit', ev => ev.preventDefault());
 incomeView.addEventListener('click', ev => {
   if (ev.target.closest('#inc-edit')) { incMode = incMode === 'summary' ? 'edit' : 'summary'; renderIncome(CTX); if (incMode === 'summary') $('inc-grid').scrollIntoView({ block: 'start' }); }
   else if (ev.target.closest('#inc-raise-clear')) saveIncome({ ...incSaved(), raise: null });
+  else if (ev.target.closest('#inc-wi-bonus-reset')) saveIncome({ ...incSaved(), raiseBonus: null });
   else if (ev.target.closest('#inc-raise-mode button')) {
     // The same raise, said another way: 5% of $100,000 becomes $5,000, or $105,000.
     const cfg = incSaved(), salary = Number(cfg.salary) || 0, to = N.raisedSalary(salary, cfg.raise);
@@ -1579,9 +1616,12 @@ function renderHome(c) {
   // You: pay from Salary, spending and debts from the data.
   const pay = N.detectPaycheck(SCHED);
   const eff = { ...inc, netPay: Number(inc.netPay) > 0 ? Number(inc.netPay) : pay?.amount || null };
-  const raised = N.raisedSalary(salary, inc.raise), hasRaise = !!inc.raise && raised > 0 && Math.abs(raised - salary) >= 0.5;
+  // What if / A raise can change the pay and the bonus; the bonus counts at its target.
+  const raisedPay = N.raisedSalary(salary, inc.raise), wiBonus = inc.raiseBonus?.pct != null;
+  const raised = raisedPay > 0 ? raisedPay : salary;
+  const hasRaise = (!!inc.raise && raisedPay > 0 && Math.abs(raisedPay - salary) >= 0.5) || wiBonus;
   const withRaise = cfg.raise && hasRaise;
-  const proj = N.project(eff, N.ratesFor(eff), withRaise ? raised : salary), year = proj.full;
+  const proj = N.project(withRaise ? N.scenario(eff) : eff, N.ratesFor(eff), withRaise ? raised : salary), year = proj.full;
   const lastIso = isoLocal(DATA_LAST);
   // Housing and loan payments are set apart: one is replaced by the home, the
   // other is what a lender counts as debt. Both can be typed over.
@@ -1627,7 +1667,10 @@ function renderHome(c) {
     + cell('Take-home', money0(you.takeHome), 'a month')
     + cell('Other spending', money0(spend.monthly), `a month, last ${spend.months} month${spend.months === 1 ? '' : 's'}`);
   $('home-raise-row').hidden = !hasRaise;
-  $('home-raise-label').textContent = hasRaise ? `Count the raise from What if / A raise (${money0(salary)} → ${money0(raised)})` : '';
+  $('home-raise-label').textContent = !hasRaise ? '' : `Count What if / A raise (${[
+    Math.abs(raised - salary) >= 0.5 ? `${money0(salary)} → ${money0(raised)}` : '',
+    wiBonus ? `bonus ${tidyNum(Number(inc.raiseBonus.pct))}% of base` : '',
+  ].filter(Boolean).join(', ')})`;
   $('home-who-note').innerHTML = (cfg.debts == null ? (debtSeen > 0 ? `Debt payments are your loan payments in the data, ${money0(debtSeen)} a month; add what it cannot see, such as a card's minimum. ` : 'No loan payments were found in your data; add any, such as a card’s minimum. ') : '')
     + (cfg.rent == null ? (rentSeen > 0 ? `Housing now is what is filed under Housing, ${money0(rentSeen)} a month. ` : 'Nothing is filed under Housing, so type what you pay now to compare. ') : '')
     + (co.on ? `${co.split === 'income' ? `Split by income, you carry ${share} of the month.` : co.split === 'even' ? 'You each carry half of the month.' : `You carry ${share} of the month.`} A co-borrower is liable for the whole loan, whatever you agree between you.` : '');

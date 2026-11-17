@@ -108,6 +108,22 @@ close(d.virginia, (d.gross - d.pretax) * 0.0575, 'Virginia takes 5.75% of the ta
 close(d.federal, (d.gross - d.pretax) * 0.22, 'federal takes 22% of the taxable raise', 0.02);
 assert.ok(d.net > 0 && d.net < d.gross);
 
+// The bonus in the what if: a target share of base pay, give or take.
+close(N.bonusPct(cfg), 5, 'a share stays a share');
+close(N.bonusPct({ ...cfg, bonus: 11200, bonusUnit: 'usd' }), 10, 'an amount as a share of salary');
+assert.equal(N.scenario(cfg), cfg, 'without a what-if bonus the Salary tab bonus is used');
+const wi = N.scenario({ ...cfg, raiseBonus: { pct: 12, spread: 25 } });
+assert.equal(wi.bonusUnit, 'pct'); assert.equal(wi.bonus, 12);
+close(N.bonusSpread({ raiseBonus: { pct: 12, spread: 25 } }), 0.25, 'spread as a fraction');
+assert.equal(N.bonusSpread({ raiseBonus: null }), 0);
+const fixedThen = N.scenario({ ...cfg, bonus: 5600, bonusUnit: 'usd', raiseBonus: { pct: 10, spread: 0 } });
+close(N.project(fixedThen, rates, 117600).bonusGross, 11760, 'set as a share, the bonus follows the raised base');
+const bLo = N.project(wi, rates, 117600, 0.75), bMid = N.project(wi, rates, 117600), bHi = N.project(wi, rates, 117600, 1.25);
+close(bLo.bonusGross, 117600 * 0.12 * 0.75, 'a low year pays part of the target');
+close(bHi.bonusGross, 117600 * 0.12 * 1.25, 'a high year pays more than the target');
+close(bMid.base.net, bLo.base.net, 'the payout does not touch the paychecks');
+assert.ok(bLo.full.net < bMid.full.net && bMid.full.net < bHi.full.net);
+
 // Without a take-home figure the plain estimate is used.
 const plain = N.ratesFor({ ...cfg, netPay: null });
 assert.ok(!plain.calibrated && plain.pretaxRate === 0 && plain.taxScale === 1);
