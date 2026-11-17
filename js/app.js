@@ -1239,7 +1239,13 @@ function renderIncome(c) {
     const sgn = v => (v >= 0 ? '+' : '−') + money0(Math.abs(v));
     const yearRange = spread > 0 && then.bonusGross > 0.5
       ? `; ${sgn(N.project(wi, rates, salThen, 1 - spread).full.net - now.full.net)} to ${sgn(N.project(wi, rates, salThen, 1 + spread).full.net - now.full.net)} as the bonus pays out` : '';
+    // Total gross: salary and bonus together, now and with the change. A bonus
+    // that strays from its target gives it a range.
+    const grossRange = spread > 0 && then.bonusGross > 0.5
+      ? ` · likely ${money0(N.project(wi, rates, salThen, 1 - spread).full.gross)} – ${money0(N.project(wi, rates, salThen, 1 + spread).full.gross)}` : '';
+    const grossParts = then.bonusGross > 0.5 ? `${money0(then.salary)} salary + ${money0(then.bonusGross)} bonus` : 'salary, no bonus';
     setKpis('inc-raise-figs', [
+      kpiTile({ label: 'Total gross a year', value: money0(then.full.gross), sub: `${money0(now.full.gross)} → ${money0(then.full.gross)}, ${sign}${money0(total)}; ${grossParts}${grossRange}` }),
       // Without a raise the paychecks do not move, so the first figure is the bonus.
       hasRaise
         ? kpiTile({ label: up ? 'More per paycheck' : 'Less per paycheck', value: sign + money(Math.abs(then.per.net - now.per.net)), tone: up ? 'pos' : 'neg', sub: `${money(now.per.net)} → ${money(then.per.net)} take-home` })
@@ -1275,7 +1281,7 @@ function renderIncome(c) {
   const t = then.full;
   $('inc-raise-table').innerHTML = `<thead><tr><th></th><th class="num">Now</th><th class="num">${withName}</th><th class="num">Change</th></tr></thead><tbody>
     ${row('Salary', salary, then.salary)}
-    ${now.bonusGross > 0 || then.bonusGross > 0 ? row(`Bonus, ${month}`, now.bonusGross, then.bonusGross) : ''}
+    ${now.bonusGross > 0 || then.bonusGross > 0 ? row(`Bonus, ${month}`, now.bonusGross, then.bonusGross) + row('Total gross', y.gross, t.gross, { cls: 'strong' }) : ''}
     ${row('Federal income tax', y.federal, t.federal, { good: 0 })}
     ${row('Social Security + Medicare', y.ss + y.medicare, t.ss + t.medicare, { good: 0 })}
     ${row('Virginia income tax', y.virginia, t.virginia, { good: 0 })}
