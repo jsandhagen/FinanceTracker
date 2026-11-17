@@ -37,17 +37,37 @@ export function rail(el, { onInput = () => {}, onChange = () => {}, onReset = nu
     handle.setAttribute('aria-valuenow', s.value);
   };
 
+  // Marks whose words would print over each other take turns above and below,
+  // by the room their words take on screen. A mark near the right end reads
+  // leftward from its line. Measured once the rail has a width (it may be
+  // drawn while its view is hidden) and again whenever that width changes.
+  function lay() {
+    const W = el.clientWidth;
+    if (!W) return;
+    const ends = [-Infinity, -Infinity], GAP = 8;
+    for (const m of marksEl.children) {
+      m.classList.remove('low', 'end');
+      const x = parseFloat(m.style.left) / 100 * W;
+      const w = Math.max(m.querySelector('b').offsetWidth, m.querySelector('small').offsetWidth) + 9;
+      const end = x + w > W;
+      const [from, to] = end ? [x - w, x] : [x, x + w];
+      const row = from >= ends[0] + GAP ? 0 : from >= ends[1] + GAP ? 1 : ends[0] <= ends[1] ? 0 : 1;
+      ends[row] = to;
+      m.classList.toggle('low', row === 1);
+      m.classList.toggle('end', end);
+    }
+  }
+  new ResizeObserver(() => { lay(); place(); }).observe(el);
+
   function set(next) {
     s = { ...s, ...next };
     {
       zonesEl.innerHTML = (s.zones || []).map(z => `<i class="${z.tone}" style="left:${at(z.from)}%;width:${Math.max(0, at(z.to) - at(z.from))}%"></i>`).join('');
-      // Marks that would print over each other take turns above and below.
-      let last = -100, row = 0;
       marksEl.innerHTML = [...(s.marks || [])].sort((a, b) => a.v - b.v).map(m => {
         const x = at(m.v), off = m.v > s.max;
-        row = x - last < 16 ? 1 - row : 0; last = x;
-        return `<span class="rail-mark${row ? ' low' : ''}${x > 82 ? ' end' : ''}${off ? ' off' : ''}" style="left:${x}%"><i></i><b>${m.label}${off ? ' ›' : ''}</b><small>${m.sub || ''}</small></span>`;
+        return `<span class="rail-mark${x > 82 ? ' end' : ''}${off ? ' off' : ''}" style="left:${x}%"><i></i><b>${m.label}${off ? ' ›' : ''}</b><small>${m.sub || ''}</small></span>`;
       }).join('');
+      lay();
     }
     lo.textContent = s.scale?.[0] ?? ''; hi.textContent = s.scale?.[1] ?? '';
     read.innerHTML = s.readout || '';

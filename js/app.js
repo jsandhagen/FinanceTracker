@@ -56,6 +56,21 @@ function monthLabel(ym, long = false) {
   const d = new Date(y, m - 1, 1);
   return long ? d.toLocaleString('en-US', { month: 'long', year: 'numeric' }) : `${d.toLocaleString('en-US', { month: 'short' })} ’${String(y).slice(2)}`;
 }
+// How much of a month the period, and the data, cover. A month cut short at
+// either end is marked wherever months are compared, so a short month does
+// not read as a cheap one (or a lean month for income).
+function monthCover(ym, c = CTX) {
+  const [y, m] = ym.split('-').map(Number), all = new Date(y, m, 0).getDate();
+  const from = Math.max(new Date(y, m - 1, 1).getTime(), dayStart(c.s), dayStart(DATA_MIN));
+  const to = Math.min(new Date(y, m - 1, all).getTime(), dayStart(c.e), dayStart(DATA_LAST));
+  const days = Math.max(0, Math.round((to - from) / DAY) + 1);
+  return { days, all, partial: days < all };
+}
+// A chart's month label, with the days it covers under a short month.
+const monthTick = ym => { const k = monthCover(ym); return k.partial ? [monthLabel(ym), `${k.days} days`] : monthLabel(ym); };
+// A colour faded for a short month's bar.
+const faded = hex => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},0.4)`;
+const byCover = (yms, hex) => yms.map(ym => (monthCover(ym).partial ? faded(hex) : hex));
 const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleString('en-US', { month: 'short' });
 
 // Chart colours. Money in is blue and money out is orange: that pair stays apart
@@ -492,10 +507,10 @@ function renderOverview(c) {
   const months = I.monthly(c.ops);
   chart('monthly-chart', {
     type: 'bar',
-    data: { labels: months.map(m => monthLabel(m.ym)), datasets: [
+    data: { labels: months.map(m => monthTick(m.ym)), datasets: [
       { label: 'Net', type: 'line', data: months.map(m => A.round2(m.net)), borderColor: C.ink, backgroundColor: C.ink, borderWidth: 1.25, pointRadius: 2.5, pointHoverRadius: 4, pointBorderColor: C.surface, pointBorderWidth: 2, tension: 0 },
-      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: C.in, borderRadius: 0, maxBarThickness: 22 },
-      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: C.out, borderRadius: 0, maxBarThickness: 22 },
+      { label: 'Income', data: months.map(m => A.round2(m.inc)), backgroundColor: byCover(months.map(m => m.ym), C.in), borderRadius: 0, maxBarThickness: 22 },
+      { label: 'Spending', data: months.map(m => A.round2(m.exp)), backgroundColor: byCover(months.map(m => m.ym), C.out), borderRadius: 0, maxBarThickness: 22 },
     ] },
     options: { ...hoverLine,
       plugins: { tooltip: { callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}` } } },
@@ -578,16 +593,20 @@ function budgetBar(r, progress) {
 function renderCashflow(c) {
   renderSankey(c);
 
-  const months = I.monthly(c.ops).reverse();
+  const months = I.monthly(c.ops).reverse().map(m => ({ ...m, cover: monthCover(m.ym, c) }));
   const maxNet = Math.max(...months.map(m => Math.abs(m.net)), 1);
-  const avg = k => months.reduce((s, m) => s + m[k], 0) / (months.length || 1);
+  // The average is of whole months when there are any: a few days of a month
+  // would pull it down.
+  const whole = months.filter(m => !m.cover.partial), base = whole.length ? whole : months;
+  const avg = k => base.reduce((s, m) => s + m[k], 0) / (base.length || 1);
+  const avgLabel = whole.length && whole.length < months.length ? `Average<small class="part-note">${whole.length} full month${whole.length === 1 ? '' : 's'}</small>` : 'Average';
   const netBar = v => `<div class="div-bar"><i class="${v >= 0 ? 'pos' : 'neg'}" style="width:${(Math.abs(v) / maxNet * 50).toFixed(1)}%"></i></div>`;
   $('cf-table').innerHTML = `<thead><tr><th>Month</th><th class="num">Income</th><th class="num">Spending</th><th class="num">Net</th><th class="col-hide-sm"></th><th class="num">Kept</th></tr></thead>
-    <tbody>${months.map(m => `<tr>
-      <td>${monthLabel(m.ym, !isPhone())}</td><td class="num">${(isPhone() ? money0 : money)(m.inc)}</td><td class="num">${(isPhone() ? money0 : money)(m.exp)}</td>
+    <tbody>${months.map(m => `<tr${m.cover.partial ? ' class="part-month"' : ''}>
+      <td>${monthLabel(m.ym, !isPhone())}${m.cover.partial ? `<small class="part-note">${m.cover.days} days</small>` : ''}</td><td class="num">${(isPhone() ? money0 : money)(m.inc)}</td><td class="num">${(isPhone() ? money0 : money)(m.exp)}</td>
       <td class="num ${m.net >= 0 ? 'pos' : 'neg'}">${isPhone() ? (m.net >= 0 ? '+' : '') + money0(m.net) : signed(m.net)}</td><td class="col-hide-sm">${netBar(m.net)}</td>
       <td class="num">${m.rate == null || m.rate < -1 ? '—' : pct(m.rate)}</td></tr>`).join('')}</tbody>
-    ${months.length > 1 ? `<tfoot><tr><td>Average</td><td class="num">${money0(avg('inc'))}</td><td class="num">${money0(avg('exp'))}</td>
+    ${months.length > 1 ? `<tfoot><tr><td>${avgLabel}</td><td class="num">${money0(avg('inc'))}</td><td class="num">${money0(avg('exp'))}</td>
       <td class="num ${avg('net') >= 0 ? 'pos' : 'neg'}">${(avg('net') >= 0 ? '+' : '') + money0(avg('net'))}</td><td class="col-hide-sm"></td>
       <td class="num">${avg('inc') > 0 ? pct(avg('net') / avg('inc')) : '—'}</td></tr></tfoot>` : ''}`;
 
@@ -618,12 +637,16 @@ function renderSankey(c) {
 
   const total = Math.max(income, expense) + Math.max(0, back);
   const W = Math.max(300, el.clientWidth), narrow = W < 560;
-  const gap = 14, nodeW = 4, rows = Math.max(left.length, right.length);
-  const H = Math.max(280, rows * 34);
+  // On a phone the figure goes on a line under the name, so the name has the
+  // whole of its half to itself; rows are spaced to hold the two lines.
+  const gap = narrow ? 30 : 14, nodeW = 4, rows = Math.max(left.length, right.length);
+  const H = narrow ? Math.max(360, rows * 56) : Math.max(280, rows * 34);
   const scale = (H - gap * (rows - 1)) / total;
   const place = (nodes, x) => {
-    let y = (H - (total * scale + gap * (nodes.length - 1))) / 2;
-    for (const n of nodes) { n.x = x; n.y = y; n.h = Math.max(1.5, n.total * scale); y += n.h + gap; }
+    // On a phone a side with fewer names spreads them out, so their lines do not meet.
+    const g = narrow && nodes.length > 1 ? Math.max(gap, Math.min(60, (H - total * scale) / (nodes.length - 1) - 4)) : gap;
+    let y = (H - (total * scale + g * (nodes.length - 1))) / 2;
+    for (const n of nodes) { n.x = x; n.y = y; n.h = Math.max(1.5, n.total * scale); y += n.h + g; }
   };
   place(left, 0); place(right, W - nodeW);
   const mid = { x: W / 2 - nodeW / 2, y: (H - total * scale) / 2, h: total * scale };
@@ -641,15 +664,32 @@ function renderSankey(c) {
   for (const n of left) { svg += ribbon(nodeW, n.y, mid.x, yl, n.h, n.color, label(n), true); yl += n.total * scale; }
   for (const n of right) { svg += ribbon(mid.x + nodeW, yr, n.x, n.y, n.h, n.color, label(n), false); yr += n.total * scale; }
   // A name gets the room its half of the drawing has left beside the figure.
-  const charW = 8.2 * uiScale(), fit = val => Math.max(5, Math.min(26, Math.floor((W / 2 - nodeW - 14) / charW) - val.length - 1));
+  const charW = 8.2 * uiScale(), room = Math.floor((W / 2 - nodeW - 14) / charW);
+  const fit = val => narrow ? Math.max(5, room) : Math.max(5, Math.min(40, room - val.length - 1));
+  const text = (n, x, anchor, val, attrs = '') => {
+    const cls = `sk-label${n.cat ? ' link' : ''}`, name = esc(clip(n.name, fit(val)));
+    const y = n.y + n.h / 2, a = anchor ? ` text-anchor="${anchor}"` : '';
+    if (narrow) {
+      // A long name breaks between words onto a second line before it is cut.
+      const words = n.name.split(' '), lines = [''];
+      for (const w of words) {
+        const cur = lines[lines.length - 1], next = cur ? `${cur} ${w}` : w;
+        if (next.length <= room || !cur) lines[lines.length - 1] = next;
+        else lines.push(w);
+      }
+      const shown = lines.length > 2 ? [lines[0], lines.slice(1).join(' ')] : lines;
+      const tl = shown.map((l, i) => `<tspan x="${x}" dy="${i ? '1.15em' : `${-0.2 - 0.575 * (shown.length - 1)}em`}">${esc(clip(l, room))}</tspan>`).join('');
+      return `<text class="${cls}" ${attrs} x="${x}" y="${y}"${a}>${tl}<tspan class="sk-val" x="${x}" dy="1.2em">${val}</tspan></text>`;
+    }
+    return `<text class="${cls}" ${attrs} x="${x}" y="${y}" dy="0.35em"${a}>${name} <tspan class="sk-val">${val}</tspan></text>`;
+  };
   for (const n of left) {
-    svg += `<rect x="0" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
-      <text class="sk-label" x="${nodeW + 8}" y="${n.y + n.h / 2}" dy="0.35em">${esc(clip(n.name, fit(moneyK(n.total))))} <tspan class="sk-val">${moneyK(n.total)}</tspan></text>`;
+    svg += `<rect x="0" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>` + text(n, nodeW + 8, '', moneyK(n.total));
   }
   for (const n of right) {
     const val = narrow ? moneyK(n.total) : `${moneyK(n.total)} · ${pct(n.total / total)}`;   // the share is in the tip on a phone
-    svg += `<rect x="${n.x}" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>
-      <text class="sk-label${n.cat ? ' link' : ''}" ${n.cat ? `data-txn-cat="${esc(n.cat)}"` : ''} x="${n.x - 8}" y="${n.y + n.h / 2}" dy="0.35em" text-anchor="end">${esc(clip(n.name, fit(val)))} <tspan class="sk-val">${val}</tspan></text>`;
+    svg += `<rect x="${n.x}" y="${n.y}" width="${nodeW}" height="${n.h}" fill="${n.color}"/>` +
+      text(n, n.x - 8, 'end', val, n.cat ? `data-txn-cat="${esc(n.cat)}"` : '');
   }
   svg += `<rect x="${mid.x}" y="${mid.y}" width="${nodeW}" height="${mid.h}" fill="${C.ink}"/>`;
   el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Income sources flowing into spending categories"><defs>${defs}</defs>${svg}</svg>`;
@@ -750,8 +790,8 @@ function renderSpending(c) {
   $('trend-legend').innerHTML = series.map(([k]) => `<span><i style="background:${CAT_SLOT[k] || C.other}"></i>${esc(k)}</span>`).join('');
   chart('trend-chart', {
     type: 'bar',
-    data: { labels: yms.map(m => monthLabel(m)), datasets: series.map(([k, v]) => ({
-      label: k, data: v.map(A.round2), backgroundColor: CAT_SLOT[k] || C.other, borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
+    data: { labels: yms.map(monthTick), datasets: series.map(([k, v]) => ({
+      label: k, data: v.map(A.round2), backgroundColor: byCover(yms, CAT_SLOT[k] || C.other), borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
     options: { ...hoverLine,
       plugins: { legend: { display: false }, tooltip: { itemSort: (a, b2) => b2.datasetIndex - a.datasetIndex, filter: x => x.parsed.y > 0,
         callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}`, footer: items => `Total  ${money(items.reduce((s, x) => s + x.parsed.y, 0))}` } } },
@@ -949,8 +989,8 @@ function renderSources(c) {
   $('src-legend').innerHTML = kinds.map(k => `<span><i style="background:${KIND_COLOR[k]}"></i>${N.KINDS[k]}</span>`).join('');
   chart('src-chart', {
     type: 'bar',
-    data: { labels: months.map(m => monthLabel(m.ym)), datasets: kinds.map(k => ({
-      label: N.KINDS[k], data: months.map(m => A.round2(m[k] || 0)), backgroundColor: KIND_COLOR[k], borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
+    data: { labels: months.map(m => monthTick(m.ym)), datasets: kinds.map(k => ({
+      label: N.KINDS[k], data: months.map(m => A.round2(m[k] || 0)), backgroundColor: byCover(months.map(m => m.ym), KIND_COLOR[k]), borderColor: C.surface, borderWidth: { top: 2 }, maxBarThickness: 28 })) },
     options: { ...hoverLine,
       plugins: { legend: { display: false }, tooltip: { itemSort: (a, b) => b.datasetIndex - a.datasetIndex, filter: x => x.parsed.y > 0,
         callbacks: { label: x => ` ${x.dataset.label}  ${money(x.parsed.y)}`, footer: items => `Total  ${money(items.reduce((s, x) => s + x.parsed.y, 0))}` } } },
@@ -1140,9 +1180,8 @@ function renderIncome(c) {
   $('inc-raise-pre').hidden = mode === 'pct';
   $('inc-raise-suf').hidden = mode !== 'pct';
   const pctNow = hasRaise ? (newSalary / salary - 1) * 100 : null;
-  for (const b of $('inc-raise-picks').children) b.classList.toggle('on', pctNow != null && Math.abs(pctNow - Number(b.dataset.pick)) < 0.005);
   $('inc-raise-clear').hidden = !hasRaise;
-  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'drag, pick or type a raise';
+  $('inc-raise-meta').textContent = hasRaise ? `${money0(salary)} → ${money0(newSalary)}` : 'drag or type a raise';
   $('inc-raise-rail').hidden = false;
   raiseRail.set({
     min: 0, max: 30, step: 0.5, value: Math.max(0, Math.min(30, pctNow || 0)), scale: ['0%', '30%'],
@@ -1212,10 +1251,10 @@ function renderIncome(c) {
     ${y.pretax > 0.004 ? row('Savings rate, counting before-tax money, of gross', sNow.withPretax, sThen.withPretax, { rate: true }) : ''}` : ''}
   </tbody>`;
   const band = v => pct(v, v * 1000 % 10 ? 2 : 0);
-  $('inc-raise-note').innerHTML = (hasRaise
-    ? `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
-    : `Pick 3%, 5% or 10%, or type a raise as a percentage, in dollars a year, or as the new salary. Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare.`)
-    + (hasRaise && spend.months ? `The savings rate uses your average spending over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month).` : '');
+  // With a raise, how it is taxed goes with the breakdown; without one, the hint stays in view.
+  $('inc-raise-note').innerHTML = hasRaise ? '' : `Drag the track, or type a raise as a percentage, in dollars a year, or as the new salary. Your next dollar of pay is taxed ${band(y.fedMarginal)} by the federal government, ${band(y.vaMarginal)} by Virginia and 7.65% for Social Security and Medicare.`;
+  $('inc-raise-why').innerHTML = !hasRaise ? '' : `Federal: ${y.fedMarginal === t.fedMarginal ? `the whole change is taxed in the ${band(t.fedMarginal)} band` : `the change crosses from the ${band(y.fedMarginal)} band into the ${band(t.fedMarginal)} band, and only the part above the line is taxed at the new rate`}. Virginia: ${band(t.vaMarginal)} on every dollar of it. `
+    + (spend.months ? `The savings rate uses your average spending over the last ${spend.months} full month${spend.months === 1 ? '' : 's'} (${money0(spend.monthly)} a month).` : '');
 
   // ── This year ──
   const lastMonth = Number(through.slice(5, 7));
@@ -1304,7 +1343,6 @@ incomeView.addEventListener('submit', ev => ev.preventDefault());
 incomeView.addEventListener('click', ev => {
   if (ev.target.closest('#inc-edit')) { incMode = incMode === 'summary' ? 'edit' : 'summary'; renderIncome(CTX); if (incMode === 'summary') $('inc-grid').scrollIntoView({ block: 'start' }); }
   else if (ev.target.closest('#inc-raise-clear')) saveIncome({ ...incSaved(), raise: null });
-  else if (ev.target.closest('[data-pick]')) { raiseMode = 'pct'; saveIncome({ ...incSaved(), raise: { mode: 'pct', value: Number(ev.target.closest('[data-pick]').dataset.pick) } }); }
   else if (ev.target.closest('#inc-raise-mode button')) {
     // The same raise, said another way: 5% of $100,000 becomes $5,000, or $105,000.
     const cfg = incSaved(), salary = Number(cfg.salary) || 0, to = N.raisedSalary(salary, cfg.raise);
@@ -1329,16 +1367,17 @@ function renderRecurring() {
     kpiTile({ label: 'Streams', value: `${live.length}<small> / ${SCHED.length}</small>`, sub: 'active / detected' }),
   ]);
 
-  $('streams-list').innerHTML = SCHED.length ? `<thead><tr><th>Merchant</th><th class="col-hide-sm">Category</th><th>Cadence</th><th class="num">Typical</th><th class="num col-hide-sm">Per month</th><th>Next</th></tr></thead>
+  $('streams-list').innerHTML = SCHED.length ? `<thead><tr><th>Merchant</th><th class="col-hide-sm">Category</th><th class="col-hide-sm">Cadence</th><th class="num col-hide-sm">Typical</th><th class="num">Per month</th><th class="col-hide-sm">Next</th></tr></thead>
     <tbody>${[...SCHED].sort((a, b) => b.active - a.active || b.monthly - a.monthly).map(x => {
       const isInc = x.s.direction === 'income';
       return `<tr class="link${x.active ? '' : ' lapsed'}" data-stream="${x.idx}">
-        <td><span class="dir ${isInc ? 'in' : 'out'}" title="${isInc ? 'Income' : 'Expense'}">${isInc ? '↓' : '↑'}</span>${esc(x.s.merchant)}</td>
+        <td class="rec-name"><span class="dir ${isInc ? 'in' : 'out'}" title="${isInc ? 'Money in' : 'Money out'}" aria-label="${isInc ? 'Money in' : 'Money out'}">${isInc ? '+' : '−'}</span>${esc(x.s.merchant)}
+          <small class="rec-sub">${x.s.frequency} · ${money(x.amount)} each · ${x.active ? `next ${shortDate(x.next)}` : `lapsed, last ${shortDate(x.last)}`}</small></td>
         <td class="col-hide-sm dim">${esc(x.s.category)}</td>
-        <td><span class="tag">${x.s.frequency}</span></td>
-        <td class="num ${isInc ? 'pos' : ''}">${isInc ? '+' : ''}${money(x.amount)}</td>
-        <td class="num col-hide-sm dim">${money(x.monthly)}</td>
-        <td>${x.active ? shortDate(x.next) : `<span class="tag" title="Last seen ${shortDate(x.last)}">LAPSED</span>`}</td></tr>`;
+        <td class="col-hide-sm"><span class="tag">${x.s.frequency}</span></td>
+        <td class="num col-hide-sm ${isInc ? 'pos' : ''}">${isInc ? '+' : ''}${money(x.amount)}</td>
+        <td class="num ${isInc ? 'pos' : ''}">${isInc ? '+' : ''}${money(x.monthly)}</td>
+        <td class="col-hide-sm">${x.active ? shortDate(x.next) : `<span class="tag" title="Last seen ${shortDate(x.last)}">LAPSED</span>`}</td></tr>`;
     }).join('')}</tbody>` : `<tbody><tr><td class="empty">No recurring streams detected yet. They appear once a merchant shows up at least three times at regular intervals.</td></tr></tbody>`;
 
   $('rec-upcoming-meta').textContent = soon.length ? `after ${shortDate(DATA_MAX)}` : '';
@@ -1534,7 +1573,7 @@ function renderHome(c) {
   $('home-co').hidden = !co.on;
   $('home-share-label').hidden = $('home-share-box').hidden = co.split !== 'custom';
   $('home-need').hidden = salary > 0;
-  $('home-grid').hidden = $('home-foot').hidden = $('home-bar').hidden = !(salary > 0);
+  $('home-grid').hidden = $('home-foot-box').hidden = $('home-bar').hidden = !(salary > 0);
   if (!(salary > 0)) return;
 
   // You: pay from Salary, spending and debts from the data.
@@ -1624,7 +1663,11 @@ function renderHome(c) {
         ${verdict(ok.yours ? 'ok' : 'no', 'Your budget', ok.yours ? `still saving ${ratePct(a.rateThen)}` : `saving falls to ${ratePct(a.rateThen)}`)}
         ${verdict(!(L.cash > 0) ? 'unset' : ok.funds ? 'ok' : 'no', 'The cash', !(L.cash > 0) ? 'none entered yet' : ok.funds ? `${pct(a.downShare, a.downShare < 0.1 ? 1 : 0)} down${a.pmi > 0 ? ', with PMI' : ''}` : `${money0(a.short)} short`)}
       </div>
-      ${stackBar(parts, a.owning, 'What a month of owning is made of')}${stackLegend(parts, a.owning)}</div>
+      ${(() => {
+        // The bar adds up to the figure above it: with a co-borrower, your part of each cost.
+        const k = co.on ? a.share : 1, mineParts = parts.map(p => ({ ...p, v: p.v * k }));
+        return `<div class="list-note raise-where">${co.on ? `Your ${money0(mine)} is ${share} of each cost` : `What the ${money0(mine)} is made of`}</div>${stackBar(mineParts, mine, 'What your month of owning is made of')}${stackLegend(mineParts, mine)}`;
+      })()}</div>
     <details class="raise-more" id="home-more"${homeMoreOpen ? ' open' : ''}>
       <summary>The full month, and the cash to close</summary>
       <div class="table-wrap"><table class="data"><thead>${head('A month')}</thead>

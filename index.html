@@ -237,7 +237,7 @@
               <div class="seg" id="out-days"><button data-period="month">Month</button><button data-period="90">90d</button><button data-period="year">Year</button></div></div>
             <div class="panel-body">
               <div class="chart-box h300"><canvas id="out-chart"></canvas></div>
-              <p class="inc-note" id="out-note"></p>
+              <details class="raise-more note-more"><summary>How this is worked out</summary><p class="inc-note" id="out-note"></p></details>
             </div>
           </div>
           <div class="panel c4">
@@ -271,7 +271,7 @@
           <div class="panel c12" id="out-trips-card">
             <div class="panel-head"><span class="panel-title">Trips</span><span class="panel-meta" id="out-trips-meta"></span></div>
             <div class="panel-body flush"><div class="table-wrap"><table class="data" id="out-trips"></table></div>
-              <p class="inc-note" id="out-trips-note">One trip a month, dated by what was charged while you were away: a hotel bill, a park fee, a lounge, a rental car settled at the counter. Flights, Airbnb and booking-site stays, and rental cars reserved online are matched to the trip they were paid during, or else to a trip in the four months after. A reserved car goes to the trip where that company was paid at the counter.</p></div>
+              <details class="raise-more note-more"><summary>How trips are found</summary><p class="inc-note" id="out-trips-note">One trip a month, dated by what was charged while you were away: a hotel bill, a park fee, a lounge, a rental car settled at the counter. Flights, Airbnb and booking-site stays, and rental cars reserved online are matched to the trip they were paid during, or else to a trip in the four months after. A reserved car goes to the trip where that company was paid at the counter.</p></details></div>
           </div>
         </div>
       </section>
@@ -387,7 +387,7 @@
             <div class="panel-body flush" id="home-limits"></div>
           </div>
         </div>
-        <p class="inc-foot" id="home-foot"></p>
+        <details class="raise-more note-more home-foot" id="home-foot-box"><summary>About these figures</summary><p class="inc-foot" id="home-foot"></p></details>
         <button type="button" class="home-bar" id="home-bar" aria-label="Your payment; show the details"></button>
       </section>
 
@@ -404,11 +404,6 @@
                   <button type="button" data-mode="salary">New salary</button>
                 </div>
                 <div class="input-affix"><span id="inc-raise-pre">$</span><input id="inc-raise" type="number" inputmode="decimal" step="any" placeholder="0" aria-label="Raise" /><span class="suffix" id="inc-raise-suf">%</span></div>
-                <div class="raise-picks" id="inc-raise-picks">
-                  <button type="button" class="btn small" data-pick="3">3%</button>
-                  <button type="button" class="btn small" data-pick="5">5%</button>
-                  <button type="button" class="btn small" data-pick="10">10%</button>
-                </div>
                 <button type="button" class="link-btn" id="inc-raise-clear" hidden>Clear</button>
               </div>
               <div id="inc-raise-rail"></div>
@@ -423,6 +418,7 @@
               <details class="raise-more" id="inc-raise-more" hidden>
                 <summary>Full breakdown, now and with the raise</summary>
                 <div class="table-wrap"><table class="data" id="inc-raise-table"></table></div>
+                <p class="inc-note" id="inc-raise-why"></p>
               </details>
               <div class="note" id="inc-raise-note"></div>
             </div>
