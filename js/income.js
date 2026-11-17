@@ -79,13 +79,19 @@ const bonusOf = (cfg, salary) => (cfg.bonusUnit === 'pct' ? salary * (Number(cfg
 export const bonusPct = (cfg, salary = Number(cfg.salary) || 0) =>
   cfg.bonusUnit === 'pct' ? Number(cfg.bonus) || 0 : salary > 0 ? (Number(cfg.bonus) || 0) / salary * 100 : 0;
 
-// The what if can set the bonus too: raiseBonus is { pct, spread }, a target
-// share of base pay (null keeps the bonus as the Salary tab has it) and how far
-// a year's payout strays from that target, give or take, in percent of it.
-// Set as a share, the bonus follows the base pay up with a raise.
+// The what if can set the bonus too: raiseBonus is { pct, usd, spread }. The
+// target is either a share of base pay (pct), which follows the base pay up
+// with a raise, or a fixed amount a year (usd), which does not; with neither,
+// the bonus is the Salary tab's. spread is how far a year's payout strays from
+// the target, give or take, in percent of it.
+const num = v => (v != null && v !== '' && isFinite(Number(v)) ? Math.max(0, Number(v)) : null);
+export const whatIfBonus = cfg => {
+  const usd = num(cfg.raiseBonus?.usd), pct = num(cfg.raiseBonus?.pct);
+  return usd != null ? { unit: 'usd', value: usd } : pct != null ? { unit: 'pct', value: pct } : null;
+};
 export function scenario(cfg) {
-  const p = cfg.raiseBonus?.pct;
-  return p != null && isFinite(Number(p)) ? { ...cfg, bonus: Math.max(0, Number(p)), bonusUnit: 'pct' } : cfg;
+  const b = whatIfBonus(cfg);
+  return b ? { ...cfg, bonus: b.value, bonusUnit: b.unit } : cfg;
 }
 export const bonusSpread = cfg => Math.max(0, Math.min(100, Number(cfg.raiseBonus?.spread) || 0)) / 100;
 

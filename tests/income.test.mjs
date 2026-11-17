@@ -118,6 +118,13 @@ close(N.bonusSpread({ raiseBonus: { pct: 12, spread: 25 } }), 0.25, 'spread as a
 assert.equal(N.bonusSpread({ raiseBonus: null }), 0);
 const fixedThen = N.scenario({ ...cfg, bonus: 5600, bonusUnit: 'usd', raiseBonus: { pct: 10, spread: 0 } });
 close(N.project(fixedThen, rates, 117600).bonusGross, 11760, 'set as a share, the bonus follows the raised base');
+const fixedWi = N.scenario({ ...cfg, raiseBonus: { usd: 9000, spread: 10 } });
+assert.equal(fixedWi.bonusUnit, 'usd'); assert.equal(fixedWi.bonus, 9000);
+close(N.project(fixedWi, rates, 117600).bonusGross, 9000, 'set as an amount, the bonus stays put with a raise');
+close(N.project(fixedWi, rates, 117600, 0.9).bonusGross, 8100, 'an amount strays from its target too');
+assert.deepEqual(N.whatIfBonus({ raiseBonus: { pct: 12 } }), { unit: 'pct', value: 12 });
+assert.deepEqual(N.whatIfBonus({ raiseBonus: { usd: 0 } }), { unit: 'usd', value: 0 });
+assert.equal(N.whatIfBonus({ raiseBonus: { pct: null, spread: 20 } }), null);
 const bLo = N.project(wi, rates, 117600, 0.75), bMid = N.project(wi, rates, 117600), bHi = N.project(wi, rates, 117600, 1.25);
 close(bLo.bonusGross, 117600 * 0.12 * 0.75, 'a low year pays part of the target');
 close(bHi.bonusGross, 117600 * 0.12 * 1.25, 'a high year pays more than the target');

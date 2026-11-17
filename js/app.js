@@ -1196,24 +1196,31 @@ function renderIncome(c) {
   });
 
   // ── The bonus in the what if ──
-  // Blank, it is the Salary tab's bonus; typed, a share of base pay that follows
-  // the raise. Give or take is how far a year's payout strays from the target.
-  const bpSet = cfg.raiseBonus?.pct != null, pctToday = N.bonusPct(eff, salary);
+  // Blank, it is the Salary tab's bonus. Typed, it is a share of base pay that
+  // follows the raise, or an amount that stays put. Give or take is how far a
+  // year's payout strays from the target.
+  const wb = N.whatIfBonus(cfg), bMode = bonusModeOf(cfg), pctToday = N.bonusPct(eff, salary);
+  const salaryBonusThen = N.project(eff, rates, salThen).bonusGross;   // the Salary tab's bonus, at the pay tried
   $('inc-wi-bonus-box').hidden = false;
-  fill('inc-wi-bonus', bpSet ? tidyNum(Number(cfg.raiseBonus.pct)) : '');
-  $('inc-wi-bonus').placeholder = tidyNum(Math.round(pctToday * 100) / 100);
+  for (const b of $('inc-wi-bonus-mode').children) b.classList.toggle('active', b.dataset.mode === bMode);
+  $('inc-wi-bonus-pre').hidden = bMode !== 'usd';
+  $('inc-wi-bonus-suf').hidden = bMode !== 'pct';
+  $('inc-wi-bonus').setAttribute('aria-label', bMode === 'pct' ? 'Bonus target, as a share of base pay' : 'Bonus target, in dollars a year');
+  fill('inc-wi-bonus', wb ? tidyNum(wb.value) : '');
+  $('inc-wi-bonus').placeholder = bMode === 'pct' ? tidyNum(Math.round(pctToday * 100) / 100) : fmt0(salaryBonusThen);
   fill('inc-wi-spread', spread > 0 ? tidyNum(spread * 100) : '');
   $('inc-wi-bonus-reset').hidden = !cfg.raiseBonus;
   if (then.bonusGross > 0.5) {
     const lo = spread > 0 ? N.project(wi, rates, salThen, 1 - spread) : null, hi = spread > 0 ? N.project(wi, rates, salThen, 1 + spread) : null;
+    const unit = wb ? wb.unit : cfg.bonusUnit === 'pct' ? 'pct' : 'usd', from = wb ? '' : ' on the Salary tab';
     $('inc-wi-bonus-v').innerHTML = `${money0(then.bonusGross)}<small>${money0(then.bonus.net)} after tax${lo ? ` · likely ${money0(lo.bonus.net)} – ${money0(hi.bonus.net)}` : ''}</small>`;
-    $('inc-wi-bonus-note').textContent = (bpSet || cfg.bonusUnit === 'pct'
-      ? `The target is ${tidyNum(bpSet ? Number(cfg.raiseBonus.pct) : pctToday)}% of ${money0(salThen)} base pay, paid in ${month}${hasRaise ? ', so it rises with the raise' : ''}.`
-      : `The Salary tab has a fixed ${money0(then.bonusGross)} bonus, paid in ${month}, so it does not move with a raise. Type a share of base pay to have it follow your pay.`)
+    $('inc-wi-bonus-note').textContent = (unit === 'pct'
+      ? `The target is ${tidyNum(wb ? wb.value : pctToday)}% of ${money0(salThen)} base pay${from}, paid in ${month}${hasRaise ? ', so it rises with the raise' : ''}.`
+      : `The target is a fixed ${money0(then.bonusGross)}${from}, paid in ${month}${hasRaise ? ', so it stays the same with the raise' : ''}.`)
       + (lo ? ` A year that pays ${pct(1 - spread)} to ${pct(1 + spread)} of target comes to ${money0(lo.bonusGross)} to ${money0(hi.bonusGross)} before tax, and ${money0(lo.full.net)} to ${money0(hi.full.net)} of take-home for the year.` : ' Add give or take to see a range.');
   } else {
     $('inc-wi-bonus-v').innerHTML = `None<small>type a target to try one</small>`;
-    $('inc-wi-bonus-note').textContent = bpSet ? '' : `No bonus is set on the Salary tab. Type one here as a share of base pay; it moves with the raise.`;
+    $('inc-wi-bonus-note').textContent = wb ? '' : 'No bonus is set on the Salary tab. Type one here, as a share of base pay (it follows a raise) or an amount.';
   }
 
   const spend = N.monthlySpending(c.allOps, through), spendYr = spend.monthly * 12;
@@ -1342,6 +1349,10 @@ const raiseRail = rail($('inc-raise-rail'), {
 // way the saved raise was given.
 let raiseMode = null;
 const raiseModeOf = cfg => raiseMode || cfg.raise?.mode || 'pct';
+// The same for the what-if bonus: a share of base pay or an amount. Until it is
+// chosen it is the way the what-if bonus, or else the Salary tab's, was given.
+let bonusMode = null;
+const bonusModeOf = cfg => bonusMode || N.whatIfBonus(cfg)?.unit || (cfg.bonusUnit === 'pct' ? 'pct' : 'usd');
 function readIncome() {
   const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
   const cfg = { ...incSaved(), ...(incDraft || {}) };
@@ -1356,8 +1367,16 @@ function readIncome() {
   const mode = raiseModeOf(cfg), v = num('inc-raise');
   cfg.raise = v == null || (mode !== 'salary' && v === 0) ? null : { mode, value: v };
   // The what-if bonus: a blank target keeps the Salary tab's bonus.
-  const bp = num('inc-wi-bonus'), sp = num('inc-wi-spread');
-  cfg.raiseBonus = bp == null && !(sp > 0) ? null : { pct: bp == null ? null : Math.max(0, bp), spread: Math.max(0, Math.min(100, sp || 0)) };
+  const sp = num('inc-wi-spread'), bm = bonusModeOf(cfg), prev = N.whatIfBonus(cfg);
+  // The box shows the target rounded; while it still reads that, the exact
+  // target is kept, so a switch from $ to % and back does not move it.
+  let bp = num('inc-wi-bonus');
+  if (bp != null && prev && prev.unit === bm && $('inc-wi-bonus').value === tidyNum(prev.value)) bp = prev.value;
+  cfg.raiseBonus = bp == null && !(sp > 0) ? null : {
+    pct: bp != null && bm === 'pct' ? Math.max(0, bp) : null,
+    usd: bp != null && bm === 'usd' ? Math.max(0, bp) : null,
+    spread: Math.max(0, Math.min(100, sp || 0)),
+  };
   return cfg;
 }
 async function saveIncome(cfg) {
@@ -1379,7 +1398,17 @@ incomeView.addEventListener('submit', ev => ev.preventDefault());
 incomeView.addEventListener('click', ev => {
   if (ev.target.closest('#inc-edit')) { incMode = incMode === 'summary' ? 'edit' : 'summary'; renderIncome(CTX); if (incMode === 'summary') $('inc-grid').scrollIntoView({ block: 'start' }); }
   else if (ev.target.closest('#inc-raise-clear')) saveIncome({ ...incSaved(), raise: null });
-  else if (ev.target.closest('#inc-wi-bonus-reset')) saveIncome({ ...incSaved(), raiseBonus: null });
+  else if (ev.target.closest('#inc-wi-bonus-reset')) { bonusMode = null; saveIncome({ ...incSaved(), raiseBonus: null }); }
+  else if (ev.target.closest('#inc-wi-bonus-mode button')) {
+    // The same bonus, said the other way, at the pay being tried: 10% of
+    // $117,600 becomes $11,760, and back.
+    const cfg = incSaved(), salary = Number(cfg.salary) || 0, wb = N.whatIfBonus(cfg);
+    const to = N.raisedSalary(salary, cfg.raise), pay = to > 0 ? to : salary;
+    bonusMode = ev.target.closest('button').dataset.mode;
+    if (!wb || wb.unit === bonusMode || !(pay > 0)) { renderIncome(CTX); return; }
+    const v = bonusMode === 'usd' ? wb.value / 100 * pay : wb.value / pay * 100;
+    saveIncome({ ...cfg, raiseBonus: { ...cfg.raiseBonus, pct: bonusMode === 'pct' ? Math.round(v * 1e4) / 1e4 : null, usd: bonusMode === 'usd' ? Math.round(v * 100) / 100 : null } });
+  }
   else if (ev.target.closest('#inc-raise-mode button')) {
     // The same raise, said another way: 5% of $100,000 becomes $5,000, or $105,000.
     const cfg = incSaved(), salary = Number(cfg.salary) || 0, to = N.raisedSalary(salary, cfg.raise);
@@ -1617,9 +1646,9 @@ function renderHome(c) {
   const pay = N.detectPaycheck(SCHED);
   const eff = { ...inc, netPay: Number(inc.netPay) > 0 ? Number(inc.netPay) : pay?.amount || null };
   // What if / A raise can change the pay and the bonus; the bonus counts at its target.
-  const raisedPay = N.raisedSalary(salary, inc.raise), wiBonus = inc.raiseBonus?.pct != null;
+  const raisedPay = N.raisedSalary(salary, inc.raise), wiBonus = N.whatIfBonus(inc);
   const raised = raisedPay > 0 ? raisedPay : salary;
-  const hasRaise = (!!inc.raise && raisedPay > 0 && Math.abs(raisedPay - salary) >= 0.5) || wiBonus;
+  const hasRaise = (!!inc.raise && raisedPay > 0 && Math.abs(raisedPay - salary) >= 0.5) || !!wiBonus;
   const withRaise = cfg.raise && hasRaise;
   const proj = N.project(withRaise ? N.scenario(eff) : eff, N.ratesFor(eff), withRaise ? raised : salary), year = proj.full;
   const lastIso = isoLocal(DATA_LAST);
@@ -1669,7 +1698,7 @@ function renderHome(c) {
   $('home-raise-row').hidden = !hasRaise;
   $('home-raise-label').textContent = !hasRaise ? '' : `Count What if / A raise (${[
     Math.abs(raised - salary) >= 0.5 ? `${money0(salary)} → ${money0(raised)}` : '',
-    wiBonus ? `bonus ${tidyNum(Number(inc.raiseBonus.pct))}% of base` : '',
+    wiBonus ? `bonus ${wiBonus.unit === 'pct' ? `${tidyNum(wiBonus.value)}% of base` : money0(wiBonus.value)}` : '',
   ].filter(Boolean).join(', ')})`;
   $('home-who-note').innerHTML = (cfg.debts == null ? (debtSeen > 0 ? `Debt payments are your loan payments in the data, ${money0(debtSeen)} a month; add what it cannot see, such as a card's minimum. ` : 'No loan payments were found in your data; add any, such as a card’s minimum. ') : '')
     + (cfg.rent == null ? (rentSeen > 0 ? `Housing now is what is filed under Housing, ${money0(rentSeen)} a month. ` : 'Nothing is filed under Housing, so type what you pay now to compare. ') : '')

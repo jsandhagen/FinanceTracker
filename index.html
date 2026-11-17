@@ -411,7 +411,11 @@
               <div class="raise-bonus" id="inc-wi-bonus-box">
                 <div class="lever-head"><span>Bonus</span><b id="inc-wi-bonus-v"></b></div>
                 <div class="raise-bonus-row">
-                  <div class="input-affix"><input id="inc-wi-bonus" type="number" inputmode="decimal" min="0" max="200" step="any" aria-label="Bonus target, as a share of base pay" /><span class="suffix">% of base</span></div>
+                  <div class="seg" id="inc-wi-bonus-mode" role="group" aria-label="How the bonus is given">
+                    <button type="button" data-mode="pct" title="A share of base pay: it follows a raise">%</button>
+                    <button type="button" data-mode="usd" title="An amount a year: it stays put with a raise">$</button>
+                  </div>
+                  <div class="input-affix"><span id="inc-wi-bonus-pre">$</span><input id="inc-wi-bonus" type="number" inputmode="decimal" min="0" step="any" aria-label="Bonus target" /><span class="suffix" id="inc-wi-bonus-suf">% of base</span></div>
                   <span class="dim">give or take</span>
                   <div class="input-affix"><input id="inc-wi-spread" type="number" inputmode="decimal" min="0" max="100" step="5" placeholder="0" aria-label="How far a year's bonus strays from its target, in percent" /><span class="suffix">%</span></div>
                   <button type="button" class="link-btn" id="inc-wi-bonus-reset" hidden>Same as Salary</button>

@@ -889,7 +889,8 @@ tr.lapsed td { color: var(--ink3); }
 /* The bonus in the what if */
 .raise-bonus { margin: 0.4rem 0 1.6rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
 .raise-bonus-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 0.8rem; }
-.raise-bonus-row .input-affix input { width: 7rem; }
+.raise-bonus-row .input-affix input { width: 9rem; }
+.raise-bonus-row [hidden] + input { padding-left: 0.8rem; }
 #inc-wi-bonus-note { margin: 0.8rem 0 0; }
 #inc-wi-bonus-note:empty { display: none; }
 .raise-save { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 1.4rem; padding-top: 1.4rem; border-top: 1px solid var(--line); }
